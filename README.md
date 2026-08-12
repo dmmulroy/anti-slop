@@ -36,9 +36,11 @@ export default defineConfig({
   rules: {
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-fraud": "error",
     "anti-slop/no-known-value-widening": "error",
     "anti-slop/no-object-parameters": "error",
     "anti-slop/no-runtime-typeof": "error",
+    "anti-slop/no-self-licking": "error",
     "anti-slop/no-shape-in-symbol-names": "error",
     "anti-slop/no-unknown-parameters": "error",
     "anti-slop/no-unknown-type-aliases": "error",
@@ -54,9 +56,11 @@ The same `jsPlugins` entry and rules work under `lint` in a Vite+ config.
 
 - `no-chained-type-assertions` — rejects nested type assertions that fabricate evidence.
 - `no-conditional-empty-object-spread` — rejects conditional spreads that use `{}` to omit fields.
+- `no-fraud` — rejects implementations that claim work they never do: ignored inputs behind a hardcoded success, catch clauses that discard the error and report success, and placeholder data in production source. Test, mock, and fixture files are exempt, because fakes are honest there.
 - `no-known-value-widening` — rejects explicit broad target types that discard known value evidence.
 - `no-object-parameters` — rejects the broad `object` type on function inputs.
 - `no-runtime-typeof` — requires boundary parsing instead of ad hoc `typeof` narrowing.
+- `no-self-licking` — rejects constructs that only prove themselves: assertions that compare a value to itself, tests that assert only on their own doubles, and functions that forward their parameters unchanged.
 - `no-shape-in-symbol-names` — rejects `shape` in symbol names.
 - `no-unknown-parameters` — rejects `unknown` inputs except the explicit `cause` convention.
 - `no-unknown-type-aliases` — rejects aliases that merely conceal `unknown`.

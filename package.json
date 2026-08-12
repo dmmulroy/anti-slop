@@ -11,7 +11,7 @@
   "scripts": {
     "check": "pnpm lint && pnpm test && pnpm typecheck && pnpm check:skill-assets",
     "lint": "oxlint src",
-    "test": "tsx src/rules/no-conditional-empty-object-spread.test.ts && tsx src/rules/no-unsafe-dictionary-type.test.ts && tsx src/rules/no-known-value-widening.test.ts && tsx src/rules/no-object-parameters.test.ts",
+    "test": "tsx src/rules/no-conditional-empty-object-spread.test.ts && tsx src/rules/no-unsafe-dictionary-type.test.ts && tsx src/rules/no-known-value-widening.test.ts && tsx src/rules/no-object-parameters.test.ts && tsx src/rules/no-self-licking.test.ts && tsx src/rules/no-fraud.test.ts",
     "typecheck": "tsc --noEmit",
     "sync:skill-assets": "node scripts/sync-skill-assets.mjs",
     "check:skill-assets": "node scripts/sync-skill-assets.mjs --check"
