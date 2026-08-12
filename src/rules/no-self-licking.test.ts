@@ -22,6 +22,8 @@ tester.run("anti-slop/no-self-licking", noSelfLickingRule, {
 		"function getUser(id: UserId, includeDeleted: boolean) { return repository.getUser(id); }",
 		"const forward = (...args: readonly string[]) => join(...args);",
 		"const now = () => clock.now();",
+		"const match = candidates.find((candidate) => text.includes(candidate));",
+		"const names = users.map((user) => format(user));",
 	],
 	invalid: [
 		{ code: "expect(true).toBe(true);", errors: [tautological] },

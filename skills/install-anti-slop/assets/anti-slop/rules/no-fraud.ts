@@ -12,18 +12,10 @@ type CatchFrame = {
 	throws: number;
 };
 
-const PLACEHOLDER_VALUES = [
-	"changeme",
-	"example.com",
-	"example.net",
-	"example.org",
-	"foo@bar",
-	"jane doe",
-	"john doe",
-	"lorem ipsum",
-	"test@test",
-	"your-api-key",
-];
+const PLACEHOLDER_VALUE =
+	/changeme|example\.(?:com|net|org)|foo@bar|jane doe|john doe|lorem ipsum|test@test|your-api-key/iu;
+const QUOTED_TEXT = /^['"](.*)['"]$/su;
+const STRING_LITERAL = /^['"]/u;
 const FAILURE_KEYS = new Set(["cause", "error", "errors", "failed", "failure"]);
 const OUTCOME_KEYS = new Set(["ok", "success"]);
 const UNFINISHED_COMMENT = /\b(?:todo|fixme|unimplemented|not implemented)\b/iu;
@@ -73,9 +65,8 @@ function isLiteralValue(node: ESTree.Node): boolean {
 function propertyName(property: ESTree.ObjectProperty): string | null {
 	if (property.computed) return null;
 	if (property.key.type === "Identifier") return property.key.name;
-	return property.key.type === "Literal" && typeof property.key.value === "string"
-		? property.key.value
-		: null;
+	if (property.key.type !== "Literal") return null;
+	return QUOTED_TEXT.exec(property.key.raw ?? "")?.[1] ?? null;
 }
 
 /** An object literal is not a success claim when it names a failure or sets an outcome flag to false. */
@@ -161,10 +152,9 @@ export const noFraudRule = defineRule({
 		};
 
 		const checkPlaceholder = (node: ESTree.Node, text: string) => {
-			const lowercased = text.toLowerCase();
-			const value = PLACEHOLDER_VALUES.find((candidate) => lowercased.includes(candidate));
-			if (value === undefined) return;
-			context.report({ node, messageId: "placeholderData", data: { value } });
+			const found = PLACEHOLDER_VALUE.exec(text);
+			if (found === null) return;
+			context.report({ node, messageId: "placeholderData", data: { value: found[0] } });
 		};
 
 		return {
@@ -211,8 +201,9 @@ export const noFraudRule = defineRule({
 				context.report({ node, messageId: "errorSwallowedSuccess" });
 			},
 			Literal(node) {
-				if (typeof node.value !== "string") return;
-				checkPlaceholder(node, node.value);
+				const raw = node.raw ?? "";
+				if (!STRING_LITERAL.test(raw)) return;
+				checkPlaceholder(node, raw);
 			},
 			TemplateElement(node) {
 				checkPlaceholder(node, node.value.cooked ?? node.value.raw);

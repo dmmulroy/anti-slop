@@ -123,7 +123,15 @@ function returnedExpression(node: FunctionLike): ESTree.Node | null {
 	return statement?.type === "ReturnStatement" ? statement.argument : null;
 }
 
+/** A function passed straight to a call is call-site syntax, not an indirection in the API surface. */
+function isInlineCallback(node: FunctionLike): boolean {
+	const parent = node.parent;
+	if (parent.type !== "CallExpression" && parent.type !== "NewExpression") return false;
+	return parent.callee !== node;
+}
+
 function isPassThrough(node: FunctionLike): boolean {
+	if (isInlineCallback(node)) return false;
 	const names = parameterNames(node);
 	const returned = returnedExpression(node);
 	if (names === null || returned === null) return false;
