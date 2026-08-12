@@ -85,6 +85,24 @@ const options = {
 };
 ```
 
+### `no-fraud`
+
+```ts
+function saveOrder(order: Order) {
+  return { ok: true };
+}
+
+try {
+  await sync();
+} catch {
+  return { ok: true };
+}
+
+const supportEmail = "support@example.com";
+```
+
+Each one claims work that never happened. Test, mock, story, and fixture files are exempt.
+
 ### `no-known-value-widening`
 
 ```ts
@@ -108,6 +126,24 @@ if (typeof input === "string") {
   useName(input);
 }
 ```
+
+### `no-self-licking`
+
+```ts
+expect(total).toBe(total);
+
+it("saves", () => {
+  const save = vi.fn();
+  saveOrder(save);
+  expect(save).toHaveBeenCalledWith(order);
+});
+
+function getUser(id: UserId) {
+  return repository.getUser(id);
+}
+```
+
+None of these prove anything about the system: the assertion cannot fail, the test only checks its own double, and the function adds no behavior.
 
 ### `no-shape-in-symbol-names`
 
