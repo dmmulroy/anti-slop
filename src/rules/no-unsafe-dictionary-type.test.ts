@@ -30,6 +30,7 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"interface Escape {} interface Escape { readonly id: string } type A = Record<string, Escape>;",
 		"interface Escape { readonly id: string } interface Escape {} type A = Record<string, Escape>;",
 		"interface Owner { readonly id: string } type A = Record<string, object & Owner>;",
+		"type Wrap<T> = { readonly wrapped: T }; type Inner<T, U> = { readonly value: T } & Wrap<U>; type Outer<T, U> = Record<string, Inner<T, U>>; declare function f<T, U>(): Outer<T, U>;",
 	],
 	invalid: [
 		{ code: "type A = Record<string, unknown>;", errors: [error] },

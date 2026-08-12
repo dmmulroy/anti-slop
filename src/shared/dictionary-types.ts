@@ -158,13 +158,17 @@ function isEffectivelyEmptyInterface(
 function resolvedSubstitutionArgument(
 	type: ESTree.TSType,
 	base: TypeAliasEnvironment,
+	resolving: ReadonlySet<string> = new Set(),
 ): ESTree.TSType {
 	const unwrapped = unwrapTransparentType(type);
 	if (unwrapped.type !== "TSTypeReference") return type;
 	const name = typeReferenceName(unwrapped);
-	if (name === null) return type;
+	if (name === null || resolving.has(name)) return type;
 	const substitution = base.get(name);
-	return substitution === undefined ? type : resolvedSubstitutionArgument(substitution, base);
+	if (substitution === undefined) return type;
+	const nextResolving = new Set(resolving);
+	nextResolving.add(name);
+	return resolvedSubstitutionArgument(substitution, base, nextResolving);
 }
 
 function aliasSubstitution(
