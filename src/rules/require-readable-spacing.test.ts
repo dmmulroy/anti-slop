@@ -19,9 +19,32 @@ tester.run("anti-slop/require-readable-spacing", requireReadableSpacingRule, {
     "function f() {\n// return docs\nreturn 1;\n}",
     "const a = 1;\n\n\nconst b = 2;",
     "switch (x) { case 1: case 2: go(); break; default: stop(); }",
+    "const a = 1;\nconst b = 2;",
+    "export const a = 1;\nexport const b = 2;",
+    "const a = 1;\nlet b = 2;\nvar c = 3;",
+    "function f() {\nconst a = 1;\nusing b = open();\n\nreturn a;\n}",
+    "const a = 1;\nconst b = 2;\n\nconst c = 3;",
+    "const a = 1; // trailing\nconst b = 2;",
+    "/** Heads a group. */\nconst a = 1;\nconst b = 2;",
+    "import { a } from 'a';\n\nconst b = a;\nexport const c = b;",
   ],
   invalid: [
-    { code: "const a = 1;\nconst b = 2;", output: "const a = 1;\n\nconst b = 2;", errors: [error] },
+    {
+      code: "const a = 1;\n/** B docs. */\nconst b = 2;",
+      output: "const a = 1;\n\n/** B docs. */\nconst b = 2;",
+      errors: [error],
+    },
+    {
+      code: "const a = 1;\n// b\nconst b = 2;",
+      output: "const a = 1;\n\n// b\nconst b = 2;",
+      errors: [error],
+    },
+    {
+      code: "const a = 1;\nconst b = {\n};\nconst c = 3;",
+      output: "const a = 1;\n\nconst b = {\n};\n\nconst c = 3;",
+      errors: [error, error],
+    },
+    { code: "const a = 1;\nfoo(a);", output: "const a = 1;\n\nfoo(a);", errors: [error] },
     {
       code: "export const a = 1;\n/** B docs. */\nexport type B = number;",
       output: "export const a = 1;\n\n/** B docs. */\nexport type B = number;",
@@ -32,7 +55,7 @@ tester.run("anti-slop/require-readable-spacing", requireReadableSpacingRule, {
       output: "const a = 1; // trailing\n\n// leading\nconst b = 2;",
       errors: [error],
     },
-    { code: "const a = 1; const b = 2;", output: "const a = 1;\n\n const b = 2;", errors: [error] },
+    { code: "const a = 1; foo(a);", output: "const a = 1;\n\n foo(a);", errors: [error] },
     {
       code: "import { a } from 'a';\nconst b = a;",
       output: "import { a } from 'a';\n\nconst b = a;",
