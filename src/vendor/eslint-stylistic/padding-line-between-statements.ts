@@ -590,7 +590,10 @@ const StatementTypes: Record<string, NodeTestObject> = {
 }
 
 /** Build the vendored padding rule with caller-owned, typed policy options. */
-export default function createPaddingLineRule(options: RuleOptions): CreateRule {
+export default function createPaddingLineRule(
+  options: RuleOptions,
+  skipPair?: (prevNode: ASTNode, nextNode: ASTNode) => boolean,
+): CreateRule {
 return {
   meta: {
     type: 'layout',
@@ -729,11 +732,11 @@ return {
         innerStatementNode = innerStatementNode.body
 
       if (Array.isArray(type))
-        return type.some(match.bind(null, innerStatementNode))
+        return type.some(match.bind(null, node))
 
       if (isSelectorOption(type)) {
         const matchedNodes = selectorMatchedNodes.get(type.selector)
-        if (!matchedNodes?.has(innerStatementNode))
+        if (!matchedNodes?.has(node) && !matchedNodes?.has(innerStatementNode))
           return false
 
         const lineMode = type.lineMode
@@ -746,6 +749,12 @@ return {
         return true
       }
       else {
+        if ((innerStatementNode.type === 'ExportNamedDeclaration'
+          || innerStatementNode.type === 'ExportDefaultDeclaration')
+          && innerStatementNode.declaration
+          && !['export', 'singleline-export', 'multiline-export', 'default'].includes(type))
+          innerStatementNode = innerStatementNode.declaration
+
         const statementType = StatementTypes[type]
         if (statementType === undefined)
           throw new Error(`Padding rule invariant: unsupported statement type ${type}`)
@@ -844,6 +853,9 @@ return {
 
     function verifyPendingPairs(): void {
       for (const { prevNode, nextNode } of pendingPairs) {
+        if (skipPair?.(prevNode, nextNode))
+          continue
+
         const type = getPaddingType(prevNode, nextNode)
         const paddingLines = getPaddingLineSequences(prevNode, nextNode)
 

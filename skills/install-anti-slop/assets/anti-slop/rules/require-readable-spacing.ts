@@ -1,6 +1,24 @@
-import type { CreateRule } from "@oxlint/plugins";
+import type { CreateRule, ESTree } from "@oxlint/plugins";
 
 import createPaddingLineRule from "../vendor/eslint-stylistic/padding-line-between-statements.ts";
+
+function declaration(node: ESTree.Node): ESTree.Node {
+  if ((node.type === "ExportNamedDeclaration" || node.type === "ExportDefaultDeclaration") && node.declaration) return node.declaration;
+
+  return node;
+}
+
+function skipAttachedStatementPair(previous: ESTree.Node, next: ESTree.Node): boolean {
+  if (next.type === "EmptyStatement" && previous.loc.end.line === next.loc.start.line) return true;
+
+  const prevDeclaration = declaration(previous);
+  const nextDeclaration = declaration(next);
+  return prevDeclaration.type === "TSDeclareFunction"
+    && (nextDeclaration.type === "TSDeclareFunction" || nextDeclaration.type === "FunctionDeclaration")
+    && prevDeclaration.id != null
+    && nextDeclaration.id != null
+    && prevDeclaration.id.name === nextDeclaration.id.name;
+}
 
 const paddingRule = createPaddingLineRule([
   { blankLine: "always", prev: "import", next: "*" },
@@ -21,18 +39,7 @@ const paddingRule = createPaddingLineRule([
   { blankLine: "always", prev: "*", next: ["return", "if", "switch", "try", "for", "while", "do"] },
   { blankLine: "always", prev: "block-like", next: "*" },
   { blankLine: "any", prev: "import", next: "import" },
-  {
-    blankLine: "any",
-    prev: {
-      selector:
-        ':matches(TSDeclareFunction, ExportNamedDeclaration[declaration.type="TSDeclareFunction"])',
-    },
-    next: {
-      selector:
-        ':matches(TSDeclareFunction, FunctionDeclaration, ExportNamedDeclaration[declaration.type="TSDeclareFunction"], ExportNamedDeclaration[declaration.type="FunctionDeclaration"])',
-    },
-  },
-]);
+], skipAttachedStatementPair);
 
 /** Restore structural blank lines with whitespace-only fixes; keep local short bindings and overloads grouped. */
 export const requireReadableSpacingRule: CreateRule = {
