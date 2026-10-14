@@ -27,7 +27,7 @@ function enclosingReducer(node: ESTree.Node) {
       const firstParameter = callback.params[0];
       const accumulator = firstParameter?.type === "AssignmentPattern" ? firstParameter.left : firstParameter;
       if (accumulator?.type !== "Identifier") return null;
-      return { callback, accumulator, initialValue: owner.arguments[1] };
+      return { callback, accumulator, receiver: method.object, initialValue: owner.arguments[1] };
     }
     parent = parent.parent;
   }
@@ -72,6 +72,12 @@ export const noReduceAccumulatorCopyRule = defineRule({
     messages: {
       accumulatorCopy: "Do not copy the reducer accumulator on every iteration; growing copies can cause quadratic work. Mutate a fresh, locally owned accumulator and return it, or use an iterator pipeline/flatMap.",
     },
+    schema: [{
+      type: "object",
+      properties: { requireArrayReceiver: { type: "boolean" } },
+      additionalProperties: false,
+    }],
+    defaultOptions: [{ requireArrayReceiver: false }],
   },
   createOnce(context) {
     return {
@@ -80,6 +86,12 @@ export const noReduceAccumulatorCopyRule = defineRule({
         if (method === null) return;
         const reducer = enclosingReducer(node);
         if (reducer === null) return;
+        const option = context.options?.[0];
+        if (
+          typeof option === "object" && option !== null && !Array.isArray(option) &&
+          option.requireArrayReceiver === true &&
+          !isKnownArrayExpression(context.sourceCode, reducer.receiver)
+        ) return;
         const accumulator = context.sourceCode.getDeclaredVariables(reducer.callback).find(variable =>
           variable.identifiers.some(identifier => identifier.start === reducer.accumulator.start),
         );

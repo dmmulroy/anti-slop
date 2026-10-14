@@ -109,7 +109,7 @@ export default defineConfig({
 ### Generic rules
 
 - `no-array-filter-map` — rejects adjacent eager array filter/map passes while allowing lazy iterator pipelines.
-- `no-reduce-accumulator-copy` — rejects non-spread accumulator copies inside reducers; complements native `oxc/no-accumulating-spread`.
+- `no-reduce-accumulator-copy` — rejects non-spread accumulator copies inside reducers; complements native `oxc/no-accumulating-spread`. By default, this uses the `reduce`/`reduceRight` method name as a heuristic, including unknown and custom receivers. Configure `["error", { "requireArrayReceiver": true }]` to report only receivers with local array evidence (literals, array annotations, or recognized array chains), avoiding warnings on custom one-call APIs.
 - `no-chained-type-assertions` — rejects nested `as` and angle-bracket assertions that fabricate evidence; chains made only of `as const` remain valid.
 - `no-conditional-empty-object-spread` — reports object spreads that use a conditional `{}` branch to omit fields. It intentionally has no autofix because omission is not equivalent to assigning `undefined`.
 - `no-known-value-widening` — rejects known expressions flowing into explicit `unknown`, `object`, anonymous-object, or open-dictionary targets, including known arguments passed to local `unknown` type predicates. Empty dictionary accumulators and finite-key `Record` targets remain valid.
