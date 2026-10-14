@@ -8,6 +8,11 @@ const error = { messageId: "expectedBlankLine" };
 
 tester.run("anti-slop/require-readable-spacing", requireReadableSpacingRule, {
   valid: [
+    "function f() {};",
+    "function f() {};\n\nfunction g() {}",
+    "namespace Types {\nexport interface A {}\n\nexport interface B {}\n}",
+    "function f() {\nfirst: foo();\nsecond: bar();\n}",
+    "export declare function parse(value: string): string;\nexport function parse(value: string) { return value; }",
     "import { a } from 'a';\nimport { b } from 'b';\n\nexport const c = a + b;",
     "function f() {\nconst a = 1;\nconst b = 2;\n\nreturn a + b;\n}",
     "function f() { return 1; }",
@@ -29,6 +34,12 @@ tester.run("anti-slop/require-readable-spacing", requireReadableSpacingRule, {
     "import { a } from 'a';\n\nconst b = a;\nexport const c = b;",
   ],
   invalid: [
+    { code: "function f() {};\nfunction g() {}", output: "function f() {};\n\nfunction g() {}", errors: [error] },
+    { code: "export declare function parse(value: string): string;\nexport function render() {}", output: "export declare function parse(value: string): string;\n\nexport function render() {}", errors: [error] },
+    { code: "namespace Types {\nexport type A = string;\nexport type B = number;\n}", output: "namespace Types {\nexport type A = string;\n\nexport type B = number;\n}", errors: [error] },
+    { code: "declare function parse(value: string): string;\nfunction render() {}", output: "declare function parse(value: string): string;\n\nfunction render() {}", errors: [error] },
+    { code: "namespace Types {\nexport interface A {}\nexport interface B {}\n}", output: "namespace Types {\nexport interface A {}\n\nexport interface B {}\n}", errors: [error] },
+    { code: "first: foo();\nsecond: bar();", output: "first: foo();\n\nsecond: bar();", errors: [error] },
     {
       code: "const a = 1;\n/** B docs. */\nconst b = 2;",
       output: "const a = 1;\n\n/** B docs. */\nconst b = 2;",
