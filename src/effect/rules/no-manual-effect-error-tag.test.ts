@@ -10,6 +10,14 @@ new RuleTester().run(
 			'error._tag === "NotFound";',
 			'Effect.catchTag("NotFound", recover);',
 			'Effect.catchTag("Wrapper", (error) => error.reason._tag === "Timeout" ? retry : fail);',
+			// A nested helper is its own function, so the catch handler does not own
+			// its comparison and catchTag is the wrong advice.
+			`Effect.catchAll((error) => {
+				function isNotFound(value) {
+					return value._tag === "NotFound";
+				}
+				return isNotFound(error) ? recover : fail;
+			});`,
 		],
 		invalid: [
 			{
