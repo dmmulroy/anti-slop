@@ -80,18 +80,65 @@ export const propertyName = (
 	return undefined;
 };
 
+const matchPatternMethods = new Set(["when", "not", "whenAnd", "whenOr"]);
+
+const isMatchCall = (
+	node: ESTree.Node | null | undefined,
+): node is ESTree.CallExpression => {
+	if (node?.type !== "CallExpression") return false;
+	const callee = node.callee;
+	if (callee.type !== "MemberExpression") return false;
+	const isMatchNamespace =
+		(callee.object.type === "Identifier" && callee.object.name === "Match") ||
+		(callee.object.type === "MemberExpression" &&
+			!callee.object.computed &&
+			callee.object.object.type === "Identifier" &&
+			callee.object.object.name === "Effect" &&
+			callee.object.property.type === "Identifier" &&
+			callee.object.property.name === "Match");
+	if (!isMatchNamespace) return false;
+	const methodName =
+		!callee.computed && callee.property.type === "Identifier"
+			? callee.property.name
+			: callee.computed && isStringLiteral(callee.property)
+				? callee.property.value
+				: undefined;
+	return methodName !== undefined && matchPatternMethods.has(methodName);
+};
+
 export const isMatchPatternObject = (node: ESTree.ObjectExpression): boolean => {
-	const call = node.parent;
-	if (call?.type !== "CallExpression" || !call.arguments.includes(node)) {
-		return false;
+	let current: ESTree.Node = node;
+	while (current.parent !== null && current.parent !== undefined) {
+		const parentNode: ESTree.Node = current.parent;
+		if (
+			parentNode.type === "Property" &&
+			parentNode.value === current &&
+			parentNode.parent?.type === "ObjectExpression"
+		) {
+			current = parentNode.parent;
+			continue;
+		}
+		if (parentNode.type === "ArrayExpression") {
+			current = parentNode;
+			continue;
+		}
+		if (
+			parentNode.type === "ParenthesizedExpression" &&
+			"expression" in parentNode &&
+			parentNode.expression === current
+		) {
+			current = parentNode;
+			continue;
+		}
+		break;
 	}
-	const callee = call.callee;
-	return (
-		callee.type === "MemberExpression" &&
-		callee.object.type === "Identifier" &&
-		callee.object.name === "Match" &&
-		!callee.computed &&
-		callee.property.type === "Identifier" &&
-		(callee.property.name === "when" || callee.property.name === "not")
-	);
+	const call = current.parent;
+	if (!isMatchCall(call)) return false;
+
+	const argIndex = call.arguments.indexOf(current as ESTree.Expression);
+	if (argIndex === -1) return false;
+
+	return call.arguments.length === 1
+		? argIndex === 0
+		: argIndex >= 0 && argIndex < call.arguments.length - 1;
 };
