@@ -24,6 +24,14 @@ new RuleTester().run(
 				code: 'Effect.catchIf(predicate, (error) => { switch (error._tag) { case "NotFound": return recover; } });',
 				errors: [{ messageId: "tag" }],
 			},
+			{
+				code: 'Effect.catch((error) => error?._tag === "NotFound" ? recover : fail);',
+				errors: [{ messageId: "tag" }],
+			},
+			{
+				code: 'Effect.catch((error) => { switch (error?.reason?._tag) { case "Timeout": return retry; } });',
+				errors: [{ messageId: "reason" }],
+			},
 		],
 	},
 );
