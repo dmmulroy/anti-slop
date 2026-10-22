@@ -64,6 +64,8 @@ Complete when the operation and target path are established and pre-existing wor
 
    For Vite+, add these fields to `lint.ignorePatterns` and `lint.jsPlugins`. Also merge the same patterns into `fmt.ignorePatterns` so `vp check` does not reformat installed agent assets or the vendored plugin. Merge existing entries instead of replacing them.
 
+   Keep any other formatter out of the same paths. A reformatted vendored copy turns every later update into a whitespace-only diff against upstream. Merge the patterns into the ignore list the repository's formatter reads, for example `ignorePatterns` in `.oxfmtrc.json`, `.prettierignore` (also read by `bun fmt`), `[fmt] ignorePatterns` in `bunfig.toml`, negated `files.includes` entries in `biome.json`, or `excludes` in `dprint.json`. If a pre-commit hook formats staged files (lefthook, lint-staged, husky), exclude the same paths there too: some formatters exit with an error when every file they are given is ignored, which blocks commits that touch only agent assets or the plugin.
+
    Enable these rules at `"error"`, including the native Oxlint companion rule:
 
    ```json
@@ -114,7 +116,7 @@ Complete when the operation and target path are established and pre-existing wor
 
    Merge these entries with the generic plugin configuration rather than replacing it. Do not enable the Effect plugin merely because Effect appears transitively in a lockfile; require a direct package-manifest dependency or an explicit user request. The rule covers relative project imports. Report package-alias imports as a current limitation rather than pretending they are enforced.
 
-   Complete when the generic rules and eligible Effect rules are registered and existing configuration is preserved.
+   Complete when the generic rules and eligible Effect rules are registered, the formatter and any formatting hook ignore the same paths, and existing configuration is preserved.
 
 4. Run the repository's lint command and typecheck. For Vite+, run the repository's full `vp check` command after adding both lint and format ignores. If findings appear in owned project source, report them and fix them only when the user asked for migration/cleanup. Do not suppress rules, weaken rule severity, add unsafe casts, or mechanically launder types to make lint pass.
 

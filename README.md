@@ -81,6 +81,8 @@ export default defineConfig({
 
 The same `ignorePatterns`, `jsPlugins`, and rules work under `lint` in a Vite+ config. Merge the ignore patterns into Vite+'s `fmt.ignorePatterns` as well so `vp check` does not reformat installed agent assets or the vendored plugin. Preserve existing ignores and add any other project-local agent tooling directories detected in the repository; do not broadly ignore every dot-directory.
 
+The same applies to any other formatter: add the patterns to its ignore list (`.oxfmtrc.json`, `.prettierignore`, `bunfig.toml`'s `[fmt]`, `biome.json`, `dprint.json`) and to any pre-commit hook that formats staged files. Otherwise the formatter rewrites the vendored plugin, and every later update starts from a whitespace-only diff.
+
 ### Optional Effect rules
 
 Effect-specific rules live in a separate plugin so projects that do not use Effect do not inherit Effect architecture policy. Register the Effect entry point only in repositories that use Effect:
