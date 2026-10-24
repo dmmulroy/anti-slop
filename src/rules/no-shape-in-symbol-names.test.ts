@@ -2,7 +2,7 @@ import { RuleTester } from "oxlint/plugins-dev";
 
 import { noForbiddenTermInSymbolNamesRule } from "./no-shape-in-symbol-names.ts";
 
-const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
+const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "tsx" } } });
 const error = { messageId: "forbiddenSymbolName" };
 
 tester.run("anti-slop/no-shape-in-symbol-names", noForbiddenTermInSymbolNamesRule, {
@@ -11,12 +11,16 @@ tester.run("anti-slop/no-shape-in-symbol-names", noForbiddenTermInSymbolNamesRul
 		"declare const outer: External; const value = outer.inner.shape;",
 		"declare const schema: ExternalSchema; schema.shape.id.parse('x');",
 		"const owner = { id: 1 }; const value = owner.id;",
+		"import type * as z from 'zod'; type Fields = z.ZodRawShape;",
+		"import * as Library from 'library'; const view = <Library.ShapeView />;",
 	],
 	invalid: [
 		{ code: "const shape = 1;", errors: [error] },
 		{ code: "function shapeOf() {}", errors: [error] },
 		{ code: "type PayloadShape = { id: string };", errors: [error] },
 		{ code: "type Payload = { shape: string };", errors: [error] },
+		{ code: "import type * as z from 'zod'; type ZodShape = z.ZodType;", errors: [error] },
+		{ code: "namespace Shapes { export type Field = string; } type Value = Shapes.Field;", errors: 2 },
 		{
 			code: "declare const owner: External; const shape = 'field'; const value = owner[shape];",
 			errors: 2,
