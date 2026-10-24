@@ -7,6 +7,7 @@ const error = { messageId: "unknownAlias" };
 
 tester.run("anti-slop/no-unknown-type-aliases", noUnknownTypeAliasesRule, {
 	valid: [
+		"type T = User; type Body = T; type Outer<T> = Body; type Value = Outer<unknown>;",
 		"type User = { readonly id: string };",
 		"type Alias = string; type UserId = Alias;",
 		"type Payload = string | number;",
