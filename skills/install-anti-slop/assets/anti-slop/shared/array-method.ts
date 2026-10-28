@@ -56,6 +56,32 @@ function isArrayAnnotation(type: ESTree.TSType): boolean {
   );
 }
 
+const ARRAY_FACTORIES: ReadonlyMap<string, readonly string[]> = new Map([
+  ["Array", ["from", "of"]],
+  ["Object", ["entries", "keys", "values"]],
+]);
+
+/** `Array.from`/`Array.of` and `Object.keys`/`values`/`entries` on the global (unbound or a configured global), not a local binding. */
+function isArrayFactoryCall(
+  sourceCode: SourceCode,
+  method: { readonly name: string; readonly object: ESTree.Node },
+): boolean {
+  const owner = unwrapArrayExpression(method.object);
+  if (owner.type !== "Identifier" || ARRAY_FACTORIES.get(owner.name)?.includes(method.name) !== true) return false;
+  const binding = resolveArrayBinding(sourceCode, owner);
+  return binding === null || binding.defs.length === 0;
+}
+
+/** `value.split(",")` or `value.split(/,/)`: a literal separator is `String#split`, which returns an array. */
+function isLiteralSplitCall(node: ESTree.CallExpression, methodName: string): boolean {
+  const [separator] = node.arguments;
+  return (
+    methodName === "split" &&
+    separator?.type === "Literal" &&
+    (typeof separator.value === "string" || "regex" in separator)
+  );
+}
+
 /** Recognize local array evidence; unknown receivers and iterator pipelines are deliberately excluded. */
 export function isKnownArrayExpression(
   sourceCode: SourceCode,
@@ -66,9 +92,10 @@ export function isKnownArrayExpression(
   if (node.type === "ArrayExpression") return true;
   if (node.type === "CallExpression") {
     const method = arrayMethodTarget(node.callee);
+    if (method === null) return false;
+    if (isLiteralSplitCall(node, method.name) || isArrayFactoryCall(sourceCode, method)) return true;
     return (
-      method !== null &&
-      ["map", "filter", "flatMap", "slice", "concat", "toSorted", "toReversed", "toSpliced"].includes(method.name) &&
+      ["map", "filter", "flatMap", "flat", "slice", "concat", "sort", "reverse", "toSorted", "toReversed", "toSpliced"].includes(method.name) &&
       isKnownArrayExpression(sourceCode, method.object, visited)
     );
   }
