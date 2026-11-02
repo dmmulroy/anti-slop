@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import { RuleTester } from "oxlint/plugins-dev";
 
 import { noUnknownReturnsRule } from "./no-unknown-returns.ts";
@@ -44,4 +46,39 @@ tester.run("anti-slop/no-unknown-returns", noUnknownReturnsRule, {
       errors: [error],
     },
   ],
+});
+
+test("no-unknown-returns ignores overload implementation signatures", () => {
+  let ruleTesterErrorMessage: string | undefined;
+  try {
+    tester.run("anti-slop/no-unknown-returns overloads", noUnknownReturnsRule, {
+      valid: [
+        `export function read(key: "count"): number;
+export function read(key: "label"): string;
+export function read(key: string): unknown { return registry.get(key); }`,
+        `class Registry {
+  read(key: "count"): number;
+  read(key: "label"): string;
+  read(key: string): unknown { return registry.get(key); }
+}`,
+      ],
+      invalid: [
+        {
+          code: `export function read(key: "count"): unknown;
+export function read(key: string): unknown { return registry.get(key); }`,
+          errors: [error],
+        },
+        {
+          code: `class Registry {
+  read(key: "count"): unknown;
+  read(key: string): unknown { return registry.get(key); }
+}`,
+          errors: [error],
+        },
+      ],
+    });
+  } catch (error) {
+    ruleTesterErrorMessage = error instanceof Error ? error.message : String(error);
+  }
+  assert(ruleTesterErrorMessage === undefined);
 });
