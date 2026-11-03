@@ -61,6 +61,7 @@ export default defineConfig({
     "anti-slop/no-reduce-accumulator-copy": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-inline-regex": "error",
     "anti-slop/no-known-value-widening": "error",
     "anti-slop/no-module-mocking": "error",
     "anti-slop/no-object-parameters": "error",
@@ -112,6 +113,7 @@ export default defineConfig({
 - `no-reduce-accumulator-copy` — rejects non-spread accumulator copies inside reducers; complements native `oxc/no-accumulating-spread`.
 - `no-chained-type-assertions` — rejects nested `as` and angle-bracket assertions that fabricate evidence; chains made only of `as const` remain valid.
 - `no-conditional-empty-object-spread` — reports object spreads that use a conditional `{}` branch to omit fields. It intentionally has no autofix because omission is not equivalent to assigning `undefined`.
+- `no-inline-regex` — rejects fixed regex literals and fixed-argument `RegExp` calls inside functions, loops, and static blocks in favor of named module-level constants. Patterns built from runtime values stay inline.
 - `no-known-value-widening` — rejects known expressions flowing into explicit `unknown`, `object`, anonymous-object, or open-dictionary targets, including known arguments passed to local `unknown` type predicates. Empty dictionary accumulators and finite-key `Record` targets remain valid.
 - `no-module-mocking` — rejects Vitest and Jest `mock`, `doMock`, and `unstable_mockModule` calls in favor of real dependency seams.
 - `no-object-parameters` — rejects `object`, unions containing it, and scoped or transparent generic aliases that resolve to it on function inputs.
@@ -204,6 +206,16 @@ const options = {
   ...(timeout !== undefined ? { timeout } : {}),
 };
 ```
+
+### `no-inline-regex`
+
+```ts
+function isSlug(value: string) {
+  return /^[a-z0-9-]+$/u.test(value);
+}
+```
+
+Declare the pattern once as a named module-level constant, such as `const SLUG = /^[a-z0-9-]+$/u;`. A shared `g` or `y` regex keeps `lastIndex` between calls, so reset it before `exec` or `test`.
 
 ### `no-known-value-widening`
 
