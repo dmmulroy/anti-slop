@@ -64,6 +64,7 @@ export default defineConfig({
     "anti-slop/no-known-value-widening": "error",
     "anti-slop/no-module-mocking": "error",
     "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-redundant-url-parse": "error",
     "anti-slop/no-reflect-apply": "error",
     "anti-slop/no-reflect-get": "error",
     "anti-slop/no-runtime-typeof": "error",
@@ -115,6 +116,7 @@ export default defineConfig({
 - `no-known-value-widening` — rejects known expressions flowing into explicit `unknown`, `object`, anonymous-object, or open-dictionary targets, including known arguments passed to local `unknown` type predicates. Empty dictionary accumulators and finite-key `Record` targets remain valid.
 - `no-module-mocking` — rejects Vitest and Jest `mock`, `doMock`, and `unstable_mockModule` calls in favor of real dependency seams.
 - `no-object-parameters` — rejects `object`, unions containing it, and scoped or transparent generic aliases that resolve to it on function inputs.
+- `no-redundant-url-parse` — rejects URL parses that duplicate existing work: re-parsing a known URL's `href`/`toString()`, `URL.canParse(x) ? new URL(x) : …` instead of `URL.parse(x)`, wrapping a `fetch` string in `new URL`, and repeated throwaway `new URL(x).property` reads of the same stable input in one function.
 - `no-reflect-apply` — rejects global `Reflect.apply` in favor of typed function calls.
 - `no-reflect-get` — rejects global `Reflect.get` in favor of typed property access or boundary parsing.
 - `no-runtime-typeof` — requires boundary parsing instead of ad hoc `typeof` narrowing. Existence probes against the string `"undefined"` are allowed, and type predicates can be enabled explicitly.
@@ -239,6 +241,17 @@ vi.mock("./user-store");
 ```ts
 function save(value: object) {}
 ```
+
+### `no-redundant-url-parse`
+
+```ts
+function route(request: Request) {
+  if (new URL(request.url).pathname === "/health") return health();
+  return handle(new URL(request.url).pathname);
+}
+```
+
+Parse once with `const { pathname } = new URL(request.url);` and reuse it. Only inputs made of unreassigned bindings and plain property reads count as the same input; calls and computed members never do.
 
 ### `no-reflect-apply`
 

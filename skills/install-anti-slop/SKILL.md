@@ -76,6 +76,7 @@ Complete when the operation and target path are established and pre-existing wor
      "anti-slop/no-known-value-widening": "error",
      "anti-slop/no-module-mocking": "error",
      "anti-slop/no-object-parameters": "error",
+     "anti-slop/no-redundant-url-parse": "error",
      "anti-slop/no-reflect-apply": "error",
      "anti-slop/no-reflect-get": "error",
      "anti-slop/no-runtime-typeof": "error",
