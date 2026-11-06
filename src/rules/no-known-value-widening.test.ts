@@ -38,6 +38,10 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"function isString(value: unknown): value is string { return true; } declare const input: unknown; isString(input);",
 		"function isString(value: string | unknown): value is string { return true; } declare const input: string | unknown; isString(input);",
 		"function isString(value: unknown): value is string { return true; } declare function readInput(): unknown; isString(readInput());",
+		"function isString(value: unknown): value is string { return typeof value === 'string'; } export function describe(value: string | number): string { return isString(value) ? value : String(value + 1); }",
+		"function isString(value: unknown): value is string { return true; } type StringOrNumber = string | number; function check(value: StringOrNumber): boolean { return isString(value); }",
+		"function isString(value: unknown): value is string { return true; } function check(value: unknown): boolean { return isString(value as string | number); }",
+		"function isString(value: unknown): value is string { return true; } declare function getValue(): string | number; function check(): boolean { return isString(getValue()); }",
 	],
 	invalid: [
 		{ code: "const value: unknown = {};", errors: [error] },
