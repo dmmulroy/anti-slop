@@ -17,6 +17,22 @@ type FunctionWithReturnType =
   | ESTree.TSFunctionType
   | ESTree.TSMethodSignature;
 
+function isInsideTypeParameterBound(node: ESTree.Node): boolean {
+  let child: ESTree.Node = node;
+  let parent: ESTree.Node | null = child.parent;
+  while (parent !== null && parent.type !== "Program") {
+    if (
+      parent.type === "TSTypeParameter" &&
+      (parent.constraint === child || parent.default === child)
+    ) {
+      return true;
+    }
+    child = parent;
+    parent = child.parent;
+  }
+  return false;
+}
+
 /** Ban function contracts that return unknown instead of a parsed domain type. */
 export const noUnknownReturnsRule = defineRule({
   meta: {
@@ -54,6 +70,7 @@ export const noUnknownReturnsRule = defineRule({
       });
 
     const checkReturnType = (node: FunctionWithReturnType) => {
+      if (isInsideTypeParameterBound(node)) return;
       const annotation = node.returnType;
       if (annotation === null || annotation === undefined) return;
       if (!resolvesToUnknown(annotation.typeAnnotation)) return;
