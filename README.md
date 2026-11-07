@@ -66,7 +66,7 @@ export default defineConfig({
 ```
 Anti-slop is first and foremost the ruleset I use with my work, projects, and team. It reflects my preferences and taste rather than attempting to be a universal coding standard.
 
-**This project is meant to be vendored**, not treated as a fixed npm dependency. There is no official npm package. Copy the rules into your repository, read them, and change them to match your team's standards. The bundled agent skill handles the initial copy and configuration; after that, the vendored files are yours to maintain and make your own. Community-maintained forks and packages are welcome, but their compatibility and release lifecycle belong to their maintainers.
+**The upstream project is meant to be vendored** and does not publish an official npm package. This fork supports the npm installation described above. You can also copy the rules into your repository, read them, and change them to match your team's standards. The bundled agent skill handles the initial copy and configuration; after that, the vendored files are yours to maintain and make your own. Community-maintained forks and packages have their own compatibility and release lifecycles.
 
 ## Install with an agent skill
 
@@ -491,9 +491,10 @@ const userId = value as UserId;
 ```bash
 pnpm install
 pnpm check
+pnpm test:package
 ```
 
-`src/` is canonical. After changing production source, run `pnpm sync:skill-assets`; CI checks that the skill's bundled copy remains identical. `pnpm check` runs Oxlint, every RuleTester suite, TypeScript typechecking, and the skill-asset drift check.
+`src/` is canonical. After changing production source, run `pnpm sync:skill-assets`; CI checks that the skill's bundled copy remains identical. `pnpm check` runs Oxlint, every RuleTester suite, TypeScript typechecking, the distribution build, and the skill-asset drift check. `pnpm test:package` packs the npm artifact, installs it with the matching Oxlint version in a temporary consumer project, and verifies both exports, TypeScript declarations, diagnostics, and autofix. This check requires access to the npm registry. Packing automatically builds the distribution, including vendored licenses and provenance.
 
 ## License
 
