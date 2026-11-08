@@ -6,7 +6,8 @@ Opinionated Oxlint rules that reject low-evidence and low-signal TypeScript and 
 
 Anti-slop is first and foremost the ruleset I use with my work, projects, and team. It reflects my preferences and taste rather than attempting to be a universal coding standard.
 
-**This project is meant to be vendored**, not treated as a fixed npm dependency. There is no official npm package. Copy the rules into your repository, read them, and change them to match your team's standards. The bundled agent skill handles the initial copy and configuration; after that, the vendored files are yours to maintain and make your own. Community-maintained forks and packages are welcome, but their compatibility and release lifecycle belong to their maintainers.
+Original author's note:
+> **This project is meant to be vendored**, not treated as a fixed npm dependency. There is no official npm package. Copy the rules into your repository, read them, and change them to match your team's standards. The bundled agent skill handles the initial copy and configuration; after that, the vendored files are yours to maintain and make your own. Community-maintained forks and packages are welcome, but their compatibility and release lifecycle belong to their maintainers.
 
 ## Install with an agent skill
 
@@ -103,6 +104,54 @@ export default defineConfig({
   }
 });
 ```
+
+## Installation with npm
+
+```bash
+npm install --save-dev @miladk/dmmulroy-anti-slop@0.1.2
+```
+
+Requires Node.js 24+. Register the package in your Oxlint configuration and enable the rules you want:
+
+```json
+{
+  "jsPlugins": [
+    { "name": "anti-slop", "specifier": "@miladk/dmmulroy-anti-slop" }
+  ],
+  "rules": {
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-chained-type-assertions": "error"
+  }
+}
+```
+
+For the optional Effect rules, also register `@miladk/dmmulroy-anti-slop/effect` as `anti-slop-effect` and enable the desired rules listed below. TypeScript declarations are included. Use your project's existing Oxlint installation; this package does not install or constrain Oxlint. Tested with Oxlint `1.78.0` and `1.92.0`.
+
+### Working with this fork
+
+`origin` points to this fork (`Milad/anti-slop`); `upstream` points to the original repository (`dmmulroy/anti-slop`). Fetch updates from upstream, rebase your current branch, and push to your fork:
+
+```bash
+git fetch upstream
+git rebase upstream/main
+git push origin HEAD
+```
+
+If rebasing rewrites commits already pushed to your fork, use `git push --force-with-lease origin HEAD`.
+
+### Distributing with npm
+
+After syncing with upstream, set `package.json`'s version to the original repository's version at that revision, starting with `0.1.2`. Keep release versions identical; do not bump them independently.
+
+From the repository root, authenticate with an npm account that can publish `@miladk/dmmulroy-anti-slop`, validate the release, and publish:
+
+```bash
+npm login
+npm run release:check
+npm publish --access public
+```
+
+The release check runs validation and a publish dry run. Publishing builds the JavaScript and declarations and includes the required licenses. Each version can be published only once; [npm does not allow overwriting a published version](https://docs.npmjs.com/cli/commands/npm-publish/).
 
 ## Rules
 
