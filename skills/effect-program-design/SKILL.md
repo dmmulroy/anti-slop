@@ -13,6 +13,84 @@ Build production Effect v4 programs with small domain-shaped interfaces, typed s
 declared dependencies, observable operation boundaries, and tests that substitute layers at real seams. This skill
 combines broad Effect mechanics with deep-module, capture-before-narrow, and real-seam design standards.
 
+## The service pattern (always)
+
+Every application capability is a `Context.Service` class. Its constructor is the `make` effect, which `yield*`s
+each dependency from the environment. Its layer is `static readonly layer = Layer.effect(this, this.make)`. Effect v4
+has no `Layer.scoped`: `Layer.effect` runs `make` in the layer's scope, so `Effect.acquireRelease` inside `make`
+releases when that scope closes. No function takes a service as an argument, and there is no separate `*Live`
+constant or `makeXWith(dep)` variant.
+
+```ts
+// src/AppRegistry.ts
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+
+export class AppRegistry extends Context.Service<
+  AppRegistry,
+  {
+    readonly find: (input: { readonly slug: string }) => Effect.Effect<AppRecord, AppNotFound>;
+  }
+>()("@app/registry/AppRegistry", {
+  make: Effect.gen(function* () {
+    const store = yield* AppStore; // dependencies come from yield*, never from parameters
+
+    return {
+      find: ({ slug }) =>
+        store.findBySlug({ slug }).pipe(
+          Effect.flatMap(
+            Option.match({ onNone: () => Effect.fail(new AppNotFound({ slug })), onSome: Effect.succeed }),
+          ),
+          Effect.withSpan("app_registry.find", { attributes: { slug } }),
+        ),
+    };
+  }),
+}) {
+  static readonly layer = Layer.effect(this, this.make);
+}
+
+// Runtime composition provides each layer once:
+// AppRegistry.layer.pipe(Layer.provide(AppStore.layer))
+```
+
+- A variant layer derives from `layer`: `static readonly layerSelfBinding = X.layer.pipe(Layer.provide(...))`.
+- When construction needs plain options, `make` and `layer` become static functions of those options (plain values
+  only, never services or layers): `static readonly layer = (options: Options) => Layer.effect(this, this.make(options))`.
+- Hosts that build services themselves (a Durable Object, a per-request scope) `yield* X.make` with its dependencies
+  provided.
+
+## Tests live in `test/`, outside `src/` (hard rule)
+
+All test code lives in the package's `test/` directory next to `src/`: test files, test layers, fakes, fixtures, recording services and helpers. Shared ones go in `test/support/`.
+Production code in `src/` never exports `layerTest`, `layerFake`, `layerMock`, or any fake or test helper, and never
+imports from `test/`.
+
+The one exception is a fixtures layer standing in for a feature that is not built yet. It may live in `src/` only with
+a doc comment saying what it replaces and when it goes away. Test layers, fakes and test helpers still never go in
+`src/`.
+
+Tests build their layers in `test/` from the production class:
+
+```ts
+// test/support/layers.ts
+export const AppStoreTest = Layer.succeed(
+  AppStore,
+  AppStore.of({ findBySlug: ({ slug }) => Effect.succeed(Option.some({ slug, name: "Hello" })) }),
+);
+
+// The real AppRegistry over a fake dependency:
+export const AppRegistryTest = AppRegistry.layer.pipe(Layer.provide(AppStoreTest));
+
+// Or construct it directly from make inside a test:
+const registry = yield* AppRegistry.make.pipe(Effect.provide(AppStoreTest));
+```
+
+Fake the edges (external systems, platform bindings) with `Layer.succeed(Service, Service.of({...}))` or
+`Layer.mock`, and run the real service under test through `Service.layer` or `Service.make`. Make unexpected fake
+methods `Effect.die` loudly.
+
 ## Source rule
 
 Check these before guessing:
@@ -30,7 +108,7 @@ project conventions take precedence unless the task explicitly changes them.
 Read only the references relevant to the task; read all matching branches when work crosses concerns.
 
 - Public module depth and domain-shaped APIs: `references/DEEP_MODULES.md`. Read this when modifying or creating services or layers.
-- Service tags, live layers, file placement, `Effect.fn`, or runtime composition:
+- Service `make`/`layer` details, file placement, `Effect.fn`, or runtime composition:
   `references/SERVICES_LAYERS.md`.
 - Tagged errors, capture-before-narrow, spans, logs, or error reporting: `references/ERRORS_OBSERVABILITY.md`.
 - Records, schemas, variants, optionality, brands, decoding, or construction:
@@ -85,7 +163,7 @@ Read only the references relevant to the task; read all matching branches when w
 ## Core defaults
 
 - Compose workflows with `Effect.gen` and named `Effect.fn` operations.
-- Prefer `Context.Service` for application capabilities and `Layer.effect`/`Layer.scoped` for live acquisition.
+- Build every service with the service pattern above. Details: `references/SERVICES_LAYERS.md`.
 - Small services may collocate shape, tag, errors, operations, and layer in one file. Split larger services and
   external adapters by transport, persistence, orchestration, and other meaningful concerns.
 - Keep substantial operation effects independently testable. They may remain beside a small service or move to a
@@ -114,9 +192,13 @@ Read only the references relevant to the task; read all matching branches when w
 ## Testing defaults
 
 - When using `@effect/vitest`, prefer `it.effect`; use `it.live` only when live runtime behavior is itself under test.
+- Use `layer(L)(name, (it) => ...)` to share one layer, such as a server or containers, across a block (`buildPerTest: true`
+  for fresh state), `Effect.provide(harness.layer)` for per-test controls, contract suites in `test/` to run fakes and
+  real backends through the same tests, and `it.effect.prop` for Schema-driven property tests. See
+  `references/TESTING.md` (`@effect/vitest` patterns).
 - Use `TestClock`, `Deferred`, `Queue`, `Latch`, and `Ref` instead of sleeps and timing races.
-- Test services, recording fakes, and `Layer.mock` are allowed in test files or dedicated test utilities only—never
-  production source.
+- Test services, recording fakes, fixtures, and `Layer.mock` live only in the package's `test/` directory, never in
+  `src/` (see the hard rule above).
 - Use an isolated real database when behavior depends on database semantics, constraints, transactions, conflicts, or state transitions.
 - Use fake Effect services or clients for true external systems and make unexpected methods fail loudly.
 - Prefer dependency substitution through layers over module patching or method spies.
@@ -134,4 +216,6 @@ Read only the references relevant to the task; read all matching branches when w
 - [ ] Each service's implementing Layer is provided once during application runtime construction unless its required
       configuration or resources do not exist until a later operation scope.
 - [ ] Retries are bounded and idempotent; concurrency and buffering are bounded.
+- [ ] Each service is a `Context.Service` with `make` and `static readonly layer = Layer.effect(this, this.make)`.
+- [ ] Tests, test layers, and fakes live in `test/`; `src/` exports no test or fake layers.
 - [ ] Tests use real seams, deterministic synchronization, and assert external end state.

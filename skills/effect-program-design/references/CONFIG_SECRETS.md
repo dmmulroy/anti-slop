@@ -8,7 +8,10 @@ service logic. Load config during implementing-layer construction so bad/missing
 typed config error instead of surprising a later request.
 
 ```ts
-import { Config, ConfigProvider, Effect, Layer, Redacted } from "effect";
+import * as Config from "effect/Config";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 
 const WidgetConfig = Config.all({
   apiKey: Config.redacted("WIDGET_API_KEY"),
@@ -17,14 +20,18 @@ const WidgetConfig = Config.all({
   model: Config.option(Config.string("WIDGET_MODEL")),
 });
 
-export const WidgetClientLive = Layer.effect(
+export class WidgetClient extends Context.Service<
   WidgetClient,
-  Effect.gen(function* () {
+  { readonly listWidgets: (input: ListWidgetsInput) => Effect.Effect<ReadonlyArray<Widget>, WidgetError> }
+>()("@app/widgets/WidgetClient", {
+  make: Effect.gen(function* () {
     const config = yield* WidgetConfig;
     const http = yield* HttpClient.HttpClient;
-    return makeWidgetClient({ http, config });
+    return { listWidgets: (input) => listWidgets({ http, config, input }) };
   }),
-);
+}) {
+  static readonly layer = Layer.effect(this, this.make);
+}
 ```
 
 ## Recipe chooser

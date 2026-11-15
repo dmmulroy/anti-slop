@@ -46,7 +46,7 @@ behavior from current docs/types.
 
 Test domain services independently using Effect layers. Test atom integration with the library's current test/runtime
 facilities, deterministic Effect test services, and explicit result/end-state assertions. Test-only services and
-`Layer.mock` remain confined to test code. Avoid module mocks and timing sleeps.
+`Layer.mock` stay in the package's `test/` directory. Avoid module mocks and timing sleeps.
 
 If upstream `main` disagrees with the installed declarations, the installed version wins for implementation. Record a
 version upgrade separately rather than silently coding against unreleased APIs.

@@ -30,15 +30,15 @@ precisely named file. Do not split a cohesive 60-line module into ceremonial fil
 
 Split a larger service, or one wrapping an external system, by concern:
 
-- `x.service.ts`: public tag and shape
-- `x.layer.ts`: live implementation and wiring
+- `X.ts`: the `Context.Service` class with its shape, `make`, and `static layer`
 - `x.errors.ts`: internal and public errors
 - `x.schemas.ts`: boundary and domain schemas
 - `x.persistence.ts`: database effects
 - `x.client.ts`: provider/transport adapter and its single thrown-error classifier
 - `x.<capability>.ts`: substantial orchestration or workflow effects
 
-These names are a menu, not a mandatory template. Split where a concern is substantial, independently testable, has
+Tests for any of these go in the package's `test/` directory, never beside them in `src/`. These names are a menu,
+not a mandatory template. Split where a concern is substantial, independently testable, has
 a distinct failure vocabulary, or changes for a different reason.
 
 ## Preserve substantial operation effects

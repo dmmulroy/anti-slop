@@ -14,21 +14,67 @@ Small modules may collocate tag, shape, errors, and live layer. Larger services 
 public tag, live wiring, errors, schemas, persistence, and transport concerns. Collocation is a complexity decision,
 not permission to tangle public contracts with implementation details.
 
-## Live implementation
+## Live implementation: `make` and `static layer`
 
-Construct a service with `Layer.effect`/`Layer.scoped` (or the installed equivalent), yielding required services:
+Give each service its constructor as a `make` effect on the class, and build its layer from that `make` as
+`static readonly layer`. `make` yields every dependency from the environment. No function takes a service instance as
+a parameter, and there are no separate `WidgetServiceLive` constants or `makeWidgetServiceWith(provider)` variants.
 
 ```ts
-export const WidgetServiceLive = Layer.effect(
+export class WidgetService extends Context.Service<
   WidgetService,
-  Effect.gen(function* () {
-    const provider = yield* WidgetProvider;
-    return WidgetService.of({
+  {
+    readonly list: (input: ListWidgetsInput) => Effect.Effect<ReadonlyArray<Widget>, WidgetError>;
+  }
+>()("@app/widgets/WidgetService", {
+  make: Effect.gen(function* () {
+    const provider = yield* WidgetProvider; // dependencies come from yield*, never from parameters
+    return {
       list: (input) => listWidgets(input).pipe(Effect.provideService(WidgetProvider, provider)),
-    });
+    };
   }),
-);
+}) {
+  static readonly layer = Layer.effect(this, this.make);
+}
+
+// Runtime composition provides it once:
+const AppLayer = WidgetService.layer.pipe(Layer.provide(WidgetProvider.layer));
 ```
+
+- `WidgetService.make` is the constructor. Hosts that build the service themselves `yield*` it. An example is a
+  Durable Object that constructs per-instance services. Tests can do the same, providing the dependencies.
+- `WidgetService.layer` is what runtime composition provides. Effect v4 has no `Layer.scoped`: `Layer.effect` runs
+  `make` in the layer's scope, so resources acquired with `Effect.acquireRelease` in `make` release with the layer.
+- A variant layer is derived from `layer`, not from a second constructor. For example,
+  `static readonly layerSelfBinding = WidgetService.layer.pipe(Layer.provide(selfBindingHttpClient))`.
+
+When construction needs plain configuration, such as options, handler functions or processors, make both static
+functions of that configuration. Their arguments are only plain values, never services, layers or contexts:
+
+```ts
+export class MailboxProcessing extends Context.Service<MailboxProcessing, MailboxProcessingOperations>()(
+  "@app/delivery/MailboxProcessing",
+) {
+  static readonly make = <R>(options: MailboxProcessingOptions, processors: MailboxProcessors<R>) =>
+    Effect.gen(function* () {
+      const services = yield* Effect.context<MailboxProcessingBackend | Crypto.Crypto>();
+      return { processReady: processReady(options, processors).pipe(Effect.provide(services)) };
+    });
+
+  static readonly layer = <R>(options: MailboxProcessingOptions, processors: MailboxProcessors<R>) =>
+    Layer.effect(
+      MailboxProcessing,
+      Effect.gen(function* () {
+        const operations = yield* MailboxProcessing.make(options, processors);
+        const context = yield* Effect.context<R>();
+        return MailboxProcessing.of({ processReady: operations.processReady.pipe(Effect.provide(context)) });
+      }),
+    );
+}
+```
+
+Here `make` leaves the processors' requirements `R` open, for hosts that supply them per call, such as a Durable Object
+alarm. `layer` takes them once, when the layer is built.
 
 Prefer leaving dependencies in a substantial operation's `R` channel and satisfying them at runtime composition.
 Capturing a yielded dependency is reasonable when an acquired resource or configured client is genuinely layer-local
@@ -66,10 +112,22 @@ provider responses.
 
 ## Test-only implementations
 
-Handwritten test services, recording fakes, `Layer.succeed`, and `Layer.mock` are allowed **only in test code** (test
-files and dedicated test utilities). Never place a mock service, fake implementation, or `Layer.mock` in production
-modules. Keep them in the repository's designated test directories or test utilities.
-Production source should expose the real tag and live adapter seams; tests own substitutions.
+All test code lives in the package's `test/` directory, outside `src/`: test files, test layers, fakes, fixtures,
+recording services and helpers (shared ones in `test/support/`). Production modules never export `layerTest`,
+`layerFake`, `layerMock`, or any fake, and never import from `test/`. The only exception is a fixtures layer in `src/`
+that stands in for a feature not built yet, with a doc comment saying what it replaces and when it goes away.
+
+Tests build layers from the production class: the real service through `Service.layer` (or `yield* Service.make`)
+with its dependencies provided by `Layer.succeed(Dep, Dep.of({...}))`, `Layer.mock`, or a real test resource.
+
+```ts
+// test/support/layers.ts
+const WidgetProviderTest = Layer.succeed(
+  WidgetProvider,
+  WidgetProvider.of({ fetch: () => Effect.succeed([]), remove: () => Effect.die("unexpected remove") }),
+);
+export const WidgetServiceTest = WidgetService.layer.pipe(Layer.provide(WidgetProviderTest));
+```
 
 Do not use module mocks or method spies. If a dependency cannot be replaced by providing a layer, repair the module's
 dependency boundary.
@@ -87,7 +145,7 @@ dependency boundary.
 - Keep dependency wiring inside the module that owns it. Never require callers to pass `Context`, `Layer`,
   `ManagedRuntime`, or service instances as ordinary arguments.
 - Use `Layer.provide`/`provideMerge` deliberately; avoid invisible global dependencies.
-- Use `Layer.scoped` when construction acquires resources.
+- Acquire resources in `make` with `Effect.acquireRelease`; `Layer.effect` scopes them to the layer.
 - Do not call `Effect.runPromise` inside services.
 - Do not pass a `Layer` into an operation.
 - Do not hide initialization failures with `orDie`; classify, capture, and expose or handle them intentionally.

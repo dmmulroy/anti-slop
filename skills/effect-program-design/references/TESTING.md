@@ -15,7 +15,10 @@ Verify test APIs against the project's installed Effect version and test integra
 - `it.effect` installs deterministic test services, including the test clock. Use `it.live` only when the behavior
   intentionally requires live services (real wall-clock scheduling is the common example). `it.live` is not an escape
   hatch for a hanging test and does not mean “integration test”. Real DB tests can normally remain `it.effect`.
-- `Layer.mock` is allowed only in test files or dedicated test utilities. Never put mock layers in production source.
+- All test code, test layers, fakes, fixtures and helpers live in the package's `test/` directory outside `src/`
+  (shared ones in `test/support/`). `src/` never exports test or fake layers. Build test layers from the production
+  class: `Service.layer.pipe(Layer.provide(fakes))`, `yield* Service.make` with dependencies provided, or
+  `Layer.succeed(Service, Service.of({...}))` for a faked edge.
 
 ```ts
 import { describe, it } from "@effect/vitest";
@@ -32,6 +35,78 @@ it.effect("returns the domain result and persists state", () =>
     expect(rows).toMatchObject([{ id: result.id, name: "one" }]);
   }).pipe(Effect.provide(makeLayer())),
 );
+```
+
+## `@effect/vitest` patterns
+
+Check these against the installed `@effect/vitest` version. Import test APIs from `@effect/vitest`, not `vitest`.
+
+- **Layout and naming.** Tests are `test/**/*.test.ts` in each package, and its `vite.config.ts` sets
+  `test.include: ['test/**/*.test.ts']`. Shared layers, fakes, seeds and harnesses go in `test/support/`. Use a
+  separate suffix such as `*.vi.test.ts` only when a package mixes test runners.
+- **`it.effect` with `Effect.provide`** is the default when each test needs its own controls. A harness in the test
+  file or `test/support/` (`makeHarness(options)`) returns `{ layer, ...recorders }`. The test yields it, runs the
+  subject with `Effect.provide(h.layer)`, and asserts on the recorders.
+- **`layer(L)(name, (it) => ...)`** shares one layer across a block. It is built once before the block and released
+  after it, and it keeps `TestClock` unless you pass `excludeTestServices: true`. Use it for expensive shared setup
+  (servers, containers, migrations) and pass `timeout` for slow builds. Pass `buildPerTest: true` for a fresh layer per
+  test when tests mutate state. `it.layer(L2)(...)` nests a further layer inside a block.
+- **Contract suites.** A function in `test/` that registers tests for any implementation lets the memory fake and every
+  real backend run the same contract, for example
+  `export const storeContract = (name, makeEmptyStore: () => Layer<Store, E>) => ...`. Each test runs inside
+  `layer(makeEmptyStore())`, so it starts empty.
+- **Real dependencies.** Start containers in a `test/support/` effect that uses `Effect.acquireRelease` (`docker run`,
+  then `docker rm -f` on release), poll readiness with a bounded `Effect.retry`, and return the connection config as a
+  `ConfigProvider`. Then provide `ConfigProvider.layer(...)` under the shared `layer(...)`, so the containers live
+  exactly as long as the block. For example,
+  run the suite under `layer(TestLive, { timeout: '180 seconds', excludeTestServices: true })`. Alternatively, keep
+  slow backend suites in a separate `test-backends/` directory with their own vite config, run by a script that owns
+  the containers. If building the store empties its tables, make those suites refuse to run unless an env var confirms
+  the database is disposable. Use that split when a suite is
+  too slow or too heavy for `pnpm test`.
+- **Property tests.** `it.effect.prop(name, [SchemaOrArbitrary, ...], ([a, ...]) => effect)` generates inputs from
+  Schemas, and `it.prop` is the synchronous form. A failure or failed `expect` shrinks the input. Inputs can
+  combine `TestClock.setTime` with `Schema.Int.check(Schema.isBetween(...))` ranges.
+- **Concurrent tests** should use the context's `expect` (`it.effect("...", ({ expect }) => ...)`), not the imported
+  one.
+
+```ts
+// test/app-registry.test.ts
+import { describe, expect, it, layer } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+
+import { AppRegistry } from "../src/AppRegistry";
+import { AppRegistryTest } from "./support/layers"; // AppRegistry.layer over an in-memory AppStore
+
+const Slug = Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]{0,30}$/));
+
+describe("AppRegistry", () => {
+  layer(AppRegistryTest, { buildPerTest: true })((it) => {
+    it.effect("finds an app it registered", () =>
+      Effect.gen(function* () {
+        const registry = yield* AppRegistry;
+        yield* registry.register({ slug: "hello", name: "Hello" });
+        expect(yield* registry.find({ slug: "hello" })).toEqual({ slug: "hello", name: "Hello" });
+      }),
+    );
+
+    it.effect("fails with AppNotFound for an unknown slug", () =>
+      Effect.gen(function* () {
+        const error = yield* (yield* AppRegistry).find({ slug: "missing" }).pipe(Effect.flip);
+        expect(error._tag).toBe("AppNotFound");
+      }),
+    );
+  });
+
+  it.effect.prop("finds any registered slug", [Slug], ([slug]) =>
+    Effect.gen(function* () {
+      const registry = yield* AppRegistry;
+      yield* registry.register({ slug, name: slug });
+      expect((yield* registry.find({ slug })).slug).toBe(slug);
+    }).pipe(Effect.provide(AppRegistryTest)),
+  );
+});
 ```
 
 ## Synchronize; never hope
@@ -115,7 +190,7 @@ interface TestMailerControl {
 // Mailer by recording to requests and taking the next scripted response.
 ```
 
-This pattern makes behavior reusable, concurrent, and deterministic. Keep the service/layer in test code, make
+This pattern makes behavior reusable, concurrent, and deterministic. Keep the service/layer in `test/`, make
 unexpected calls fail loudly, and do not mirror every production method when a smaller domain-shaped control API is
 enough. A simple one-test recording fake can still use `Layer.succeed`; promote it only when shared coordination earns
 the abstraction.
@@ -143,7 +218,7 @@ Choose the dependency by what the behavior relies on. These are examples, not re
 - **Isolated real database** for database semantics, constraints, transactions, structured-column parsing, conflict behavior, or state
   transitions.
 - **Hand fake database service** only for deterministic orchestration that does not claim to verify SQL semantics.
-- **Recording service fake** (`Layer.succeed`, a first-class test service, or `Layer.mock` in test code) for a true
+- **Recording service fake** (`Layer.succeed`, a first-class test service, or `Layer.mock`, all in `test/`) for a true
   external system; make unexpected methods die loudly.
 - **Fake `HttpClient` or loopback server** for transport encoding, decoding, and status handling.
 - **Test `ConfigProvider`** for configuration.
@@ -170,7 +245,7 @@ after the operation; do not treat a repository fake's call count as proof of SQL
 ## Banned patterns
 
 - module patching and method spies where a layer seam is available;
-- production mock layers or fake services;
+- mock layers, fake services or test helpers in `src/`;
 - real sleeps, polling, timing races, and repeated `Effect.yieldNow` as synchronization;
 - advancing `TestClock` before the subject fiber has been forked/registered its timed work;
 - background fibers or streams with no readiness/completion handshake and no cleanup;

@@ -5,7 +5,8 @@ runtime's supervision.
 
 ## Resource safety
 
-- Use `Effect.acquireRelease`, scoped effects, and `Layer.scoped` for resources requiring cleanup.
+- Use `Effect.acquireRelease` and scoped effects for resources requiring cleanup; inside a service's `make`,
+  `Layer.effect` ties them to the layer's scope (v4 has no `Layer.scoped`).
 - Keep the `Scope` requirement visible until a layer/runtime owns it.
 - Register finalizers immediately after successful acquisition.
 - Finalizers should be idempotent where practical and should preserve/report cleanup failures intentionally.

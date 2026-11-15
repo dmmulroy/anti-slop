@@ -40,5 +40,5 @@ Use an isolated real database when behavior depends on database semantics, const
 handling, or transition guards. Assert the externally visible return/error and the final database state. A hand fake
 is appropriate only for pure orchestration over an abstract database capability; it cannot prove database behavior.
 
-Never use module mocks or spies for persistence. Test services and `Layer.mock` belong only in test code, never in
-production source.
+Never use module mocks or spies for persistence. Test services and `Layer.mock` belong only in the package's `test/`
+directory, never in `src/`.
