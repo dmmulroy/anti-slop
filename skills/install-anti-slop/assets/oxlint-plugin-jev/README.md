@@ -20,14 +20,16 @@ Requests go through the Vercel AI SDK: `experimental_decide` from [`ai`](https:/
 [`@ai-sdk/typesafe-ai`](https://ai-sdk.dev/providers/ai-sdk-providers/typesafe-ai) provider. Both are dependencies
 of the plugin, so there is nothing else to install.
 
-| Variable               | Meaning                                                                                                                                                                                                                                              |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TYPESAFE_API_KEY`     | TypeSafe API key. `TYPESAFE_AI_API_KEY`, the AI SDK provider's name for it, works too.                                                                                                                                                               |
-| `TYPESAFE_BASE_URL`    | Another TypeSafe host, such as a mock, without the `/v1` prefix. The tests use it.                                                                                                                                                                   |
-| `TYPESAFE_AI_BASE_URL` | The AI SDK provider's form of the same setting, with the `/v1` prefix. `TYPESAFE_BASE_URL` wins when both are set.                                                                                                                                   |
-| `AI_GATEWAY_API_KEY`   | Needed when `model` is an AI Gateway id such as `"typesafe-ai/jev"`, or for an LLM judge without a `provider` module. Without a TypeSafe key, it is also the fallback: `jev-latest` goes to `typesafe-ai/jev` and a pinned id to `typesafe-ai/<id>`. |
-| `JEV_CHANGED_ONLY`     | `1` or `0` overrides the `changedOnly` setting. See [Changed lines only](#changed-lines-only).                                                                                                                                                       |
-| `JEV_CHANGED_BASE`     | Overrides `changedBase`.                                                                                                                                                                                                                             |
+| Variable               | Meaning                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TYPESAFE_API_KEY`     | TypeSafe API key. `TYPESAFE_AI_API_KEY`, the AI SDK provider's name for it, works too.                                                                                                                                                                                                                                                                     |
+| `TYPESAFE_BASE_URL`    | Another TypeSafe host, such as a mock, without the `/v1` prefix. The tests use it.                                                                                                                                                                                                                                                                         |
+| `TYPESAFE_AI_BASE_URL` | The AI SDK provider's form of the same setting, with the `/v1` prefix. `TYPESAFE_BASE_URL` wins when both are set.                                                                                                                                                                                                                                         |
+| `FACTORY_API_KEY`      | A [Factory](https://factory.ai) API key. Without a TypeSafe key, Jev runs on Factory's decision endpoint and is billed to your Factory org. Factory serves only aliases such as `jev-latest` and `jev-preview`, so a pinned `model` is refused, and `longContext` has no effect. The org needs the `decision_models` feature, or every request gets a 403. |
+| `FACTORY_API_BASE_URL` | Another Factory host, such as `https://dev.api.factory.ai`. Defaults to `https://api.factory.ai`.                                                                                                                                                                                                                                                          |
+| `AI_GATEWAY_API_KEY`   | Needed when `model` is an AI Gateway id such as `"typesafe-ai/jev"`, or for an LLM judge without a `provider` module. Without a TypeSafe or Factory key, it is also the fallback: `jev-latest` goes to `typesafe-ai/jev` and a pinned id to `typesafe-ai/<id>`.                                                                                            |
+| `JEV_CHANGED_ONLY`     | `1` or `0` overrides the `changedOnly` setting. See [Changed lines only](#changed-lines-only).                                                                                                                                                                                                                                                             |
+| `JEV_CHANGED_BASE`     | Overrides `changedBase`.                                                                                                                                                                                                                                                                                                                                   |
 
 In CI, set `ci: "fail"` so a run that could not reach Jev fails instead of passing quietly.
 
@@ -299,7 +301,7 @@ the cache directory between CI runs (for example with `actions/cache` on
 `node_modules/.cache/oxlint-plugin-jev`), and leave `longContext` off unless files exceed Jev's limits.
 An LLM judge sends every snippet and question in one prompt and is billed by that provider.
 
-If Jev can't be asked, because no credential is set (`TYPESAFE_API_KEY`, `TYPESAFE_AI_API_KEY`, or `AI_GATEWAY_API_KEY`), the request times out, or the API errors, the plugin prints one warning naming the cause and reports nothing for that file. Set `ci: "fail"` to fail the run instead.
+If Jev can't be asked, because no credential is set (`TYPESAFE_API_KEY`, `TYPESAFE_AI_API_KEY`, `FACTORY_API_KEY`, or `AI_GATEWAY_API_KEY`), the request times out, or the API errors, the plugin prints one warning naming the cause and reports nothing for that file. Set `ci: "fail"` to fail the run instead.
 
 If only a location refinement fails, confirmed violations are still reported at the file level.
 Under CI with `ci: "fail"`, the refinement failure produces a separate diagnostic; otherwise it warns.
@@ -348,6 +350,7 @@ npm run build
 npm run check   # format, lint, typecheck
 npm test        # builds first, since the worker tests run against dist/
 JEV_LIVE=1 TYPESAFE_API_KEY=... npm test   # also runs example/ against the real API
+JEV_LIVE=1 FACTORY_API_KEY=... npm test    # the same, through Factory's decision endpoint
 ```
 
 ## License

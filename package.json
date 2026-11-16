@@ -22,6 +22,7 @@
     "@oxlint/plugins": "1.86.0"
   },
   "devDependencies": {
+    "@ai-sdk/anthropic": "4.0.105",
     "@ai-sdk/openai-compatible": "3.0.92",
     "@ai-sdk/typesafe-ai": "3.0.40",
     "@effect/tsgo": "0.48.0",

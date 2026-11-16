@@ -10,9 +10,9 @@
 // --fail or `ci: "fail"` with CI set.
 //
 // It uses erasable type syntax so Node 24 runs the vendored copy directly. The decision-model and
-// llm-judge backends load the Vercel AI SDK (`ai`, `zod`, plus `@ai-sdk/typesafe-ai` or
-// `@ai-sdk/openai-compatible`) from the consumer's node_modules when they run; the command backend
-// needs only Node built-ins.
+// llm-judge backends load the Vercel AI SDK (`ai`, `zod`, plus `@ai-sdk/typesafe-ai`,
+// `@ai-sdk/openai-compatible`, or `@ai-sdk/anthropic`) from the consumer's node_modules when they
+// run; the command backend needs only Node built-ins.
 
 // A standalone CLI outside any Effect runtime, so Effect's platform services do not apply.
 // oxlint-disable effecttsgo/process-env, effecttsgo/global-console

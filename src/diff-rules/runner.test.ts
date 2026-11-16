@@ -195,7 +195,7 @@ test("missing credentials warn and exit 0 unless --fail or CI with ci: fail", as
   const noKey = options(fx, { backend: "decision-model" });
   const skipped = await runDiffRules(noKey);
   assert.equal(skipped.exitCode, 0);
-  assert.match(skipped.stderr, /TYPESAFE_API_KEY \(or TYPESAFE_AI_API_KEY or AI_GATEWAY_API_KEY\) is not set; skipping diff rules/);
+  assert.match(skipped.stderr, /TYPESAFE_API_KEY \(or TYPESAFE_AI_API_KEY, FACTORY_API_KEY, or AI_GATEWAY_API_KEY\) is not set; skipping diff rules/);
   assert.equal((await runDiffRules({ ...noKey, fail: true })).exitCode, 2);
   assert.equal((await runDiffRules({ ...noKey, env: { CI: "true" } })).exitCode, 0);
   fx.config({ ci: "fail" });

@@ -145,7 +145,7 @@ This repository lints itself the same way in `oxlint.config.ts`.
 ```sh
 node <skill-directory>/scripts/install.mjs --jev   # also copies the built fork
 npm install --save-dev ./tools/oxlint/oxlint-plugin-jev   # installs ai, @ai-sdk/typesafe-ai, zod, synckit
-export TYPESAFE_API_KEY="..."   # or AI_GATEWAY_API_KEY
+export TYPESAFE_API_KEY="..."   # or FACTORY_API_KEY, or AI_GATEWAY_API_KEY
 ```
 
 Register the plugin in the base config without enabling its rules, and enable them in an overlay that `check:fast` and `check:full` run, never in the editor config:
@@ -200,11 +200,12 @@ rules: {
 
 ### Diff rules
 
-Diff rules judge a whole change set for smells that span files or need git history (shotgun surgery, divergent change, duplicated code, scope creep). The judge is a decision model (TypeSafe Jev, directly or through AI Gateway), a chat model (AI Gateway or any OpenAI-compatible server), or a CLI agent such as `claude -p` or `droid exec`. The model backends use the [Vercel AI SDK](https://ai-sdk.dev), so install it next to the vendored files when you use them; the CLI backend needs only Node:
+Diff rules judge a whole change set for smells that span files or need git history (shotgun surgery, divergent change, duplicated code, scope creep). The judge is a decision model (TypeSafe Jev, directly, through Factory, or through AI Gateway), a chat model (Factory, AI Gateway, or any OpenAI-compatible server), or a CLI agent such as `claude -p` or `droid exec`. The model backends use the [Vercel AI SDK](https://ai-sdk.dev), so install it next to the vendored files when you use them; the CLI backend needs only Node:
 
 ```sh
 npm install --save-dev ai@7.0.173 zod@4.6.7 @ai-sdk/typesafe-ai@3.0.40   # decision model, direct
 npm install --save-dev @ai-sdk/openai-compatible@3.0.92                  # chat model at LLM_JUDGE_BASE_URL
+npm install --save-dev @ai-sdk/anthropic@4.0.105                          # chat model through Factory (FACTORY_API_KEY)
 ```
 
 They run in `check:full`, not `check:fast`:

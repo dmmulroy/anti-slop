@@ -76,13 +76,14 @@ this repository tests with):
 
 | Backend and target | Install |
 | --- | --- |
-| `decision-model`, TypeSafe directly | `ai@7.0.173 zod@4.6.7 @ai-sdk/typesafe-ai@3.0.40` |
+| `decision-model`, TypeSafe directly or through Factory | `ai@7.0.173 zod@4.6.7 @ai-sdk/typesafe-ai@3.0.40` |
+| `llm-judge` through Factory | `ai@7.0.173 zod@4.6.7 @ai-sdk/anthropic@4.0.105` |
 | `decision-model` or `llm-judge` through AI Gateway | `ai@7.0.173 zod@4.6.7` (the gateway provider ships with `ai`) |
 | `llm-judge`, an OpenAI-compatible server | `ai@7.0.173 zod@4.6.7 @ai-sdk/openai-compatible@3.0.92` |
 | `command` | Nothing |
 
 ```sh
-npm install --save-dev ai@7.0.173 zod@4.6.7 @ai-sdk/typesafe-ai@3.0.40 @ai-sdk/openai-compatible@3.0.92
+npm install --save-dev ai@7.0.173 zod@4.6.7 @ai-sdk/typesafe-ai@3.0.40 @ai-sdk/openai-compatible@3.0.92 @ai-sdk/anthropic@4.0.105
 ```
 
 `zod` is a peer dependency of `ai`; npm 7+ and pnpm install it automatically, but listing it keeps
@@ -116,6 +117,20 @@ the same questions through AI Gateway (`POST {gateway}/decision-model`) with the
 id such as `jev-1.13.0` becomes `typesafe-ai/jev-1.13.0`. `AI_GATEWAY_BASE_URL` overrides the
 gateway URL. A TypeSafe key wins when both are set.
 
+#### Through Factory
+
+```sh
+export FACTORY_API_KEY="..."
+export FACTORY_API_BASE_URL="https://api.factory.ai"   # optional, for example https://dev.api.factory.ai
+```
+
+Without a TypeSafe key, `FACTORY_API_KEY` sends the same TypeSafe request to Factory's
+TypeSafe-compatible route, `POST {FACTORY_API_BASE_URL}/api/llm/decision/v1/systemone`, billed to
+the key's Factory organization. It wins over AI Gateway. Factory serves only aliases such as
+`jev-latest` and `jev-preview`, so a pinned model is refused before any request, and Factory ignores
+`longContext`. The organization needs the `decision_models` feature; without it every request is a
+`403 Decision models are not enabled for your organization`.
+
 Limits: Jev accepts 64k tokens per request (state plus all questions) and 32k per question by
 default. The default `maxChunkChars` of 60,000 stays well inside both. Set `longContext: true` in the
 config to send TypeSafe's long-context option (`providerOptions.typesafe.longContext`, header
@@ -125,6 +140,11 @@ it as slower and less accurate, so raise `maxChunkChars` with it only when neede
 ### `llm-judge` (chat model with structured output)
 
 ```sh
+# Factory: an Anthropic model through Factory's inference proxy, billed to the key's organization.
+export FACTORY_API_KEY="..."
+export LLM_JUDGE_MODEL="claude-sonnet-4-5-20250929"
+export FACTORY_CLIENT_VERSION="0.233.0"        # optional: the Droid CLI version sent as X-Client-Version
+
 # AI Gateway: any provider/model id from the gateway catalog.
 export AI_GATEWAY_API_KEY="..."
 export LLM_JUDGE_MODEL="openai/gpt-5-mini"
@@ -143,7 +163,13 @@ supportsStructuredOutputs }).chatModel(model)` from `@ai-sdk/openai-compatible`,
 `{LLM_JUDGE_BASE_URL}/chat/completions` with `response_format: { type: "json_schema", json_schema:
 { name: "diff_rules", strict: true, schema } }`, or `{ type: "json_object" }` when
 `LLM_JUDGE_STRUCTURED_OUTPUTS` is `false` (the AI SDK then logs that the schema is not sent).
-Otherwise the model id goes to AI Gateway. Both paths ask for exactly:
+With `FACTORY_API_KEY` and no `LLM_JUDGE_BASE_URL`, the model is `createAnthropic({ baseURL:
+"{FACTORY_API_BASE_URL}/api/llm/a/v1" })` from `@ai-sdk/anthropic`, which posts to
+`/api/llm/a/v1/messages` with the key as a bearer token and `X-Client-Version`. Factory's proxy
+serves only requests whose system prompt starts with `You are Droid, an AI software engineering
+agent built by Factory.`, so that sentence is prepended to the judge's system prompt, and it rejects
+clients older than its minimum Droid CLI version, so raise `FACTORY_CLIENT_VERSION` if it answers
+`too old to use this endpoint`. Otherwise the model id goes to AI Gateway. Every path asks for exactly:
 
 ```json
 { "rules": [{ "id": "shotgun-surgery", "violation": true, "confidence": 0.9, "evidence": "...", "files": ["src/a.ts"] }] }
@@ -152,9 +178,9 @@ Otherwise the model id goes to AI Gateway. Both paths ask for exactly:
 The schema requires every field (strict mode); the runner then checks that every rule is answered
 with a boolean `violation` and a `confidence` from 0 to 1. A reply that is not JSON, or misses a
 rule, is an error. The probability of yes is `confidence` when `violation` is true and
-`1 - confidence` otherwise, compared with the cutoff. Direct `@ai-sdk/openai` or
-`@ai-sdk/anthropic` providers are not wired in: AI Gateway covers those models with one key, and
-OpenAI's API works through `LLM_JUDGE_BASE_URL`.
+`1 - confidence` otherwise, compared with the cutoff. A direct `@ai-sdk/openai` provider is not
+wired in: AI Gateway covers those models with one key, and OpenAI's API works through
+`LLM_JUDGE_BASE_URL`. `@ai-sdk/anthropic` is used only for Factory's proxy.
 
 ### Retries and timeouts
 
@@ -180,10 +206,11 @@ the diff, and the judge needs no tools.
 ### Choosing a backend
 
 `--backend` wins, then `backend` in the config, then the first backend with credentials: a TypeSafe
-key (`decision-model`), then `LLM_JUDGE_BASE_URL` (`llm-judge`), then an AI Gateway credential
-(`llm-judge` when `LLM_JUDGE_MODEL` is set, otherwise `decision-model`), then a configured command.
+key (`decision-model`), then `LLM_JUDGE_BASE_URL` (`llm-judge`), then `FACTORY_API_KEY` or an AI
+Gateway credential (`llm-judge` when `LLM_JUDGE_MODEL` is set, otherwise `decision-model`; Factory
+wins over the gateway), then a configured command.
 The model is `--model`, then `TYPESAFE_DEFAULT_MODEL` or `LLM_JUDGE_MODEL`, then `model` in the
-config, then `jev-latest` (TypeSafe) or `typesafe-ai/jev` (gateway) for the decision model.
+config, then `jev-latest` (TypeSafe or Factory) or `typesafe-ai/jev` (gateway) for the decision model.
 
 ### Missing credentials and backend errors
 
