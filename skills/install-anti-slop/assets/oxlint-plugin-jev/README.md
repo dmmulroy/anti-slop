@@ -3,134 +3,50 @@
 > [!WARNING]
 > This package is experimental. Use at your own risk.
 
-[Oxlint](https://oxc.rs/docs/guide/usage/linter.html) rules written in plain English, answered by [TypeSafe Jev](https://typesafe.ai) or, as an LLM judge, by any [AI SDK](https://ai-sdk.dev) model.
+[Oxlint](https://oxc.rs/docs/guide/usage/linter.html) rules written in plain English. Each rule is a yes/no question about a function, a call, a JSX element, or a whole file. The plugin sends every match to [TypeSafe Jev](https://typesafe.ai), a decision model, or, in judge mode, to any [AI SDK](https://ai-sdk.dev) chat model, and reports when the yes-probability reaches the rule's cutoff.
 
-A rule is a yes/no question about a function, a call, a JSX element, or a whole file. Each match is sent to Jev with the question, and the plugin reports an error when the yes-probability clears your cutoff.
+This is Kyle Mistele's fork of [wobsoriano/oxlint-plugin-jev](https://github.com/wobsoriano/oxlint-plugin-jev). It adds per-rule messages, `jev/suggest`, `createJevPlugin`, `changedOnly`, a per-match cache, judge mode, the AI Gateway fallback, and Factory credentials.
 
 ## Install
 
-Requires Node.js 22 or later.
+Requires Node.js 22 or later and oxlint 1.83 or later.
+
+The fork is not on npm: `npm i oxlint-plugin-jev` installs the upstream package, which has none of the features above. Install it from GitHub instead. A `prepare` script builds `dist/` during the install. npm 11 prints an `install-scripts` warning about that script, which is expected.
 
 ```sh
-npm i -D oxlint oxlint-plugin-jev
-export TYPESAFE_API_KEY="..."   # https://console.typesafe.ai
+npm i -D oxlint github:K-Mistele/oxlint-plugin-jev
+# or pin a commit:
+npm i -D oxlint github:K-Mistele/oxlint-plugin-jev#<sha>
 ```
 
-Requests go through the Vercel AI SDK: `experimental_decide` from [`ai`](https://www.npmjs.com/package/ai) with the
-[`@ai-sdk/typesafe-ai`](https://ai-sdk.dev/providers/ai-sdk-providers/typesafe-ai) provider. Both are dependencies
-of the plugin, so there is nothing else to install.
+You can also vendor a built copy. The `install-anti-slop` skill in [K-Mistele/anti-slop](https://github.com/K-Mistele/anti-slop) does this with `--jev`: it copies the build to `tools/oxlint/oxlint-plugin-jev/`, which you then add as a local package (`npm i -D ./tools/oxlint/oxlint-plugin-jev`, recorded as `file:tools/oxlint/oxlint-plugin-jev`).
 
-| Variable               | Meaning                                                                                                                                                                                                                                                                                                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TYPESAFE_API_KEY`     | TypeSafe API key. `TYPESAFE_AI_API_KEY`, the AI SDK provider's name for it, works too.                                                                                                                                                                                                                                                                     |
-| `TYPESAFE_BASE_URL`    | Another TypeSafe host, such as a mock, without the `/v1` prefix. The tests use it.                                                                                                                                                                                                                                                                         |
-| `TYPESAFE_AI_BASE_URL` | The AI SDK provider's form of the same setting, with the `/v1` prefix. `TYPESAFE_BASE_URL` wins when both are set.                                                                                                                                                                                                                                         |
-| `FACTORY_API_KEY`      | A [Factory](https://factory.ai) API key. Without a TypeSafe key, Jev runs on Factory's decision endpoint and is billed to your Factory org. Factory serves only aliases such as `jev-latest` and `jev-preview`, so a pinned `model` is refused, and `longContext` has no effect. The org needs the `decision_models` feature, or every request gets a 403. |
-| `FACTORY_API_BASE_URL` | Another Factory host, such as `https://dev.api.factory.ai`. Defaults to `https://api.factory.ai`.                                                                                                                                                                                                                                                          |
-| `AI_GATEWAY_API_KEY`   | Needed when `model` is an AI Gateway id such as `"typesafe-ai/jev"`, or for an LLM judge without a `provider` module. Without a TypeSafe or Factory key, it is also the fallback: `jev-latest` goes to `typesafe-ai/jev` and a pinned id to `typesafe-ai/<id>`.                                                                                            |
-| `JEV_CHANGED_ONLY`     | `1` or `0` overrides the `changedOnly` setting. See [Changed lines only](#changed-lines-only).                                                                                                                                                                                                                                                             |
-| `JEV_CHANGED_BASE`     | Overrides `changedBase`.                                                                                                                                                                                                                                                                                                                                   |
+### Credentials
 
-In CI, set `ci: "fail"` so a run that could not reach Jev fails instead of passing quietly.
+The first credential that is set wins:
 
-## Config
+| Order | Variable                                      | Backend                                                                                                                                                                                                                                                                                   |
+| ----- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | `TYPESAFE_API_KEY` or `TYPESAFE_AI_API_KEY`   | TypeSafe directly ([console](https://console.typesafe.ai)).                                                                                                                                                                                                                               |
+| 2     | `FACTORY_API_KEY`                             | Factory's decision endpoint, billed to your Factory org. The org needs the `decision_models` feature, or every request gets a 403. Factory serves only aliases such as `jev-latest` and `jev-preview`, so a pinned `model` such as `jev-1.13.0` is refused, and `longContext` is ignored. |
+| 3     | `AI_GATEWAY_API_KEY` (or `VERCEL_OIDC_TOKEN`) | [AI Gateway](https://ai-sdk.dev/providers/ai-sdk-providers/ai-gateway): `jev-latest` maps to `typesafe-ai/jev`, and another id to `typesafe-ai/<id>`.                                                                                                                                     |
 
-Add the plugin and its rule, `jev/ask`, to `.oxlintrc.json`. Your English rules go in the options.
+AI Gateway credentials are also what a `model` containing `/` (such as `"typesafe-ai/jev"`) and a judge without a `provider` module use, regardless of the other keys.
 
-```json
-{
-  "jsPlugins": ["oxlint-plugin-jev"],
-  "rules": {
-    "jev/ask": [
-      "error",
-      {
-        "rules": [
-          {
-            "id": "no-pii-in-logs",
-            "target": "call",
-            "question": "Does this call write personal data, such as an email or phone number, to a log or console?",
-            "cutoff": 0.8
-          },
-          {
-            "id": "name-matches-behavior",
-            "target": "function",
-            "question": "Does this function's name imply it only reads data, while its body also writes or sends something?",
-            "cutoff": 0.6
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+Other variables:
 
-| Field      | What it is                                                                                                        |
-| ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| `id`       | Shown in the error message. Unique in the list.                                                                   |
-| `target`   | `"function"`, `"call"`, `"jsx"`, or `"file"`.                                                                     |
-| `question` | A yes/no question. "Yes" means "report this".                                                                     |
-| `cutoff`   | 0 to 1. Report when Jev's yes-probability is at or above it.                                                      |
-| `location` | Optional for file rules: a source-location `question` and a `cutoff` greater than 0.5 and at most 1.              |
-| `message`  | Optional. Shown instead of the question when the rule fires. See [Messages and warnings](#messages-and-warnings). |
+| Variable               | Meaning                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------- |
+| `TYPESAFE_BASE_URL`    | Another TypeSafe host, without `/v1`. `TYPESAFE_AI_BASE_URL` is the same with `/v1`; this one wins. |
+| `FACTORY_API_BASE_URL` | Another Factory host, such as `https://dev.api.factory.ai`. Defaults to `https://api.factory.ai`.   |
+| `JEV_CHANGED_ONLY`     | `1` or `0` overrides `changedOnly`.                                                                 |
+| `JEV_CHANGED_BASE`     | Overrides `changedBase`.                                                                            |
 
-`target` decides what Jev gets to read. There is no selector syntax and no other target.
+With no credential, the plugin warns once and reports nothing. Set `ci: "fail"` so CI fails instead.
 
-| Target       | Jev sees                                                                                                     | The error underlines |
-| ------------ | ------------------------------------------------------------------------------------------------------------ | -------------------- |
-| `"function"` | The whole function. An arrow or method includes its name, so `const getUser = () => ...` reads as `getUser`. | The signature line   |
-| `"call"`     | The whole call expression.                                                                                   | The whole call       |
-| `"jsx"`      | The whole element, children included.                                                                        | The opening tag      |
-| `"file"`     | The whole file.                                                                                              | The first line       |
+## Example
 
-The wording of the question is the rule, so be precise about what counts. "Does this send personal data" also fires on a legitimate `mailer.send(user.email, ...)`. "To a log or console" does not.
-
-File rules can point editor diagnostics and GitHub annotations to the suspected violation:
-
-```json
-{
-  "id": "prefer-boolean-state-helper",
-  "target": "file",
-  "question": "Does any boolean React state have a memoized callback that only sets it to true or false?",
-  "cutoff": 0.9,
-  "location": {
-    "question": "Select the declaration of the state used by the offending callback.",
-    "cutoff": 0.75
-  }
-}
-```
-
-The violation and location have separate confidence cutoffs. An uncertain or invalid location keeps
-the finding on the first line. Files truncated by `maxSnippetChars` also keep the first-line
-diagnostic; location questions only use complete source. Rules without `location` behave as before.
-
-| Setting             | Default        | Meaning                                                                                                                                                                                                                    |
-| ------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ci`                | `"skip"`       | What happens when Jev can't be asked and `CI` is set. `"skip"` warns once and reports nothing. `"fail"` fails the run. Outside CI it always skips.                                                                         |
-| `timeoutMs`         | `10000`        | Per-file request timeout, retries included.                                                                                                                                                                                |
-| `maxMatchesPerFile` | `25`           | Snippets sent per file across all rules. Extra matches are dropped in source order and the file is named on stderr.                                                                                                        |
-| `maxSnippetChars`   | `4000`         | Longer snippets are cut and end with `/* ...truncated */`.                                                                                                                                                                 |
-| `model`             | `"jev-latest"` | TypeSafe model id. Pin a versioned id such as `"jev-1.13.0"` once your cutoffs are tuned. Each diagnostic names the version that answered. An id with a `/`, such as `"typesafe-ai/jev"`, goes through AI Gateway instead. |
-| `longContext`       | `false`        | Raise Jev's limits from 64k tokens per request (32k per question) to 262k. Same price per token, but slower and less accurate.                                                                                             |
-| `judge`             | none           | Answer with an LLM judge instead of Jev. See [LLM judge](#llm-judge).                                                                                                                                                      |
-| `changedOnly`       | `false`        | Only ask about matches on lines changed against `changedBase`. See [Changed lines only](#changed-lines-only).                                                                                                              |
-| `changedBase`       | `"HEAD"`       | The git ref `changedOnly` diffs against, such as `"origin/main"` in CI.                                                                                                                                                    |
-
-## Messages and warnings
-
-A rule's optional `message` replaces the question in the diagnostic. Use it to say what to do about
-a finding. The rule id, the model that answered, and both numbers are still appended:
-
-```text
-[feature-envy] Possibly Feature Envy: ... Consider Move Function. (jev-1.13.0 answered yes, 0.91 >= 0.85)
-```
-
-`message` is plain text with no placeholders, since the id and numbers are always shown. It is not
-sent to Jev, so changing it does not re-ask anything.
-
-Oxlint takes a diagnostic's severity from the rule's config entry, and a JS plugin cannot set it per
-report. So the plugin has a second rule, `jev/suggest`, that behaves exactly like `jev/ask` and takes
-the same options. Configure it at `"warn"` for findings that should not fail the run, such as code
-smells:
+Three rules no pattern linter can express. `.oxlintrc.json`:
 
 ```json
 {
@@ -145,22 +61,22 @@ smells:
             "id": "no-pii-in-logs",
             "target": "call",
             "question": "Does this call write personal data, such as an email or phone number, to a log or console?",
-            "cutoff": 0.8,
-            "message": "Personal data is written to a log. Log an opaque id instead."
-          }
-        ]
-      }
-    ],
-    "jev/suggest": [
-      "warn",
-      {
-        "rules": [
+            "message": "Personal data is written to a log. Log an opaque user id instead.",
+            "cutoff": 0.8
+          },
           {
-            "id": "feature-envy",
+            "id": "name-matches-behavior",
             "target": "function",
-            "question": "Does this function mostly read or change the fields of an object passed in or imported from another module, rather than its own module's data?",
-            "cutoff": 0.85,
-            "message": "Possibly Feature Envy: this function mostly reads another module's data. Consider Move Function into the module that owns that data."
+            "question": "Does this function's name imply it only reads data, while its body also writes or sends something?",
+            "message": "The name says read-only, but the body has side effects. Rename it or split it.",
+            "cutoff": 0.6
+          },
+          {
+            "id": "no-prompt-injection",
+            "target": "function",
+            "question": "Does this function build a language model prompt by concatenating untrusted user input into the instructions?",
+            "message": "Untrusted input is spliced into the prompt instructions. Pass it as a separate user message.",
+            "cutoff": 0.6
           }
         ]
       }
@@ -169,18 +85,80 @@ smells:
 }
 ```
 
-The two rules are configured independently, so each has its own `rules` list and settings. Each
-enabled rule sends its own request per file with its own `maxMatchesPerFile` budget, so enabling
-both can double the requests per file. Answers are cached per question, so the same question about
-the same code is asked once across both. Rule ids only need to be unique within one rule's list.
-To set the severity of each question on its own, use [one rule per question](#one-rule-per-question).
+Against this file:
 
-## One rule per question
+```js
+export async function getUser(id) {
+  const user = await db.users.find(id);
+  console.log('loaded', user.email, user.phone);
+  await mailer.send(user.email, 'New sign-in to your account');
+  return user;
+}
+```
 
-`createJevPlugin` builds a plugin in which every question is its own oxlint rule, named
-`<name>/<id>`. Each question's severity, and whether it runs at all, then lives in the normal
-oxlint config, where `"off"` removes it from the request entirely. All enabled rules of one plugin
-share one request per file, so splitting a list into rules does not add requests.
+oxlint reports (real output, trimmed):
+
+```text
+  x jev(ask): [no-pii-in-logs] Personal data is written to a log. Log an opaque user id instead. (jev-1.14.0 answered yes, 0.98 >= 0.80)
+   ,-[fail.js:5:3]
+ 5 |   console.log('loaded', user.email, user.phone);
+   :   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  x jev(ask): [name-matches-behavior] The name says read-only, but the body has side effects. Rename it or split it. (jev-1.14.0 answered yes, 0.93 >= 0.60)
+   ,-[fail.js:3:8]
+ 3 | export async function getUser(id) {
+   :        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+Without `message`, the diagnostic shows the question instead. The rule id, the model version that answered, and the score are always shown. `example/` in this repo has a failing and a passing file; run them with `npm run example`.
+
+### Rule fields
+
+| Field      | Meaning                                                                                                                                                                                                                                                                           |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`       | Shown in the diagnostic. Unique in its list.                                                                                                                                                                                                                                      |
+| `target`   | What the model reads, and what gets underlined: `"function"` (the whole function, including an arrow's or method's name; underlines the signature line), `"call"` (the call), `"jsx"` (the element; underlines the opening tag), or `"file"` (the whole file; underlines line 1). |
+| `question` | A yes/no question. "Yes" means "report this". Its wording is the rule, so say exactly what counts.                                                                                                                                                                                |
+| `cutoff`   | 0 to 1. Report when the yes-probability is at or above it.                                                                                                                                                                                                                        |
+| `message`  | Optional. Shown instead of the question. Not sent to the model.                                                                                                                                                                                                                   |
+| `location` | Optional, file rules only: `{ "question", "cutoff" }`, with a cutoff above 0.5, to point the diagnostic at a line. See below.                                                                                                                                                     |
+
+A file rule with `location` asks a second question to find the offending line. If that answer is uncertain, or the file was truncated, the finding stays on line 1:
+
+```json
+{
+  "id": "prefer-boolean-state-helper",
+  "target": "file",
+  "question": "Does any boolean React state have a memoized callback that only sets it to true or false?",
+  "cutoff": 0.9,
+  "location": {
+    "question": "Select the declaration of the state used by the offending callback.",
+    "cutoff": 0.75
+  }
+}
+```
+
+### Settings
+
+Set next to `rules`, for `jev/ask`, `jev/suggest`, or `createJevPlugin`.
+
+| Setting             | Default        | Meaning                                                                                                                      |
+| ------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `ci`                | `"skip"`       | When the model can't be reached and `CI` is set: `"skip"` warns and reports nothing, `"fail"` fails the run.                 |
+| `timeoutMs`         | `10000`        | Per-file request budget, retries included.                                                                                   |
+| `maxMatchesPerFile` | `25`           | Matches sent per file. Extras are dropped in source order, with a warning.                                                   |
+| `maxSnippetChars`   | `4000`         | Longer snippets are truncated.                                                                                               |
+| `model`             | `"jev-latest"` | Jev model id. Pin one such as `"jev-1.13.0"` once cutoffs are tuned (TypeSafe only). An id with `/` goes through AI Gateway. |
+| `longContext`       | `false`        | Raise Jev's limit from 64k to 262k tokens per request. Slower and less accurate.                                             |
+| `judge`             | none           | Use an LLM judge instead of Jev. See [Judge mode](#judge-mode).                                                              |
+| `changedOnly`       | `false`        | Only ask about matches on lines changed against `changedBase`.                                                               |
+| `changedBase`       | `"HEAD"`       | The git ref for `changedOnly`.                                                                                               |
+
+## Severity per question
+
+oxlint takes severity from the rule's config entry, so `jev/ask` reports every question at one severity. `jev/suggest` is the same rule under a second name: configure it at `"warn"` for findings that should not fail the run. Each of the two sends its own request per file.
+
+For per-question severities, `createJevPlugin` makes each question its own oxlint rule, `<name>/<id>`. All of a plugin's enabled rules share one request per file, and `"off"` drops a question from the request.
 
 ```js
 // jev-rules.mjs
@@ -195,16 +173,16 @@ export default createJevPlugin({
       target: 'call',
       question:
         'Does this call write personal data, such as an email or phone number, to a log or console?',
+      message: 'Personal data is written to a log. Log an opaque user id instead.',
       cutoff: 0.8,
-      message: 'Personal data is written to a log. Log an opaque id instead.',
     },
     {
-      id: 'feature-envy',
+      id: 'name-matches-behavior',
       target: 'function',
       question:
-        "Does this function mostly read or change the fields of an object passed in or imported from another module, rather than its own module's data?",
-      cutoff: 0.85,
-      message: 'Possibly Feature Envy. Consider Move Function.',
+        "Does this function's name imply it only reads data, while its body also writes or sends something?",
+      message: 'The name says read-only, but the body has side effects. Rename it or split it.',
+      cutoff: 0.6,
     },
   ],
 });
@@ -215,36 +193,29 @@ export default createJevPlugin({
   "jsPlugins": ["./jev-rules.mjs"],
   "rules": {
     "acme/no-pii-in-logs": "error",
-    "acme/feature-envy": "warn"
+    "acme/name-matches-behavior": "warn"
   }
 }
 ```
 
-`createJevPlugin` takes the same settings and rule fields as `jev/ask`, plus `name`, and checks them
-when the plugin loads. Ids cannot contain `/`. `maxMatchesPerFile` is shared by all of the plugin's
-rules, since they share the request. The rules take no options in the oxlint config.
-
-Batching relies on how oxlint runs JS plugins: for each file it merges every enabled rule's visitor
-into one AST walk, then runs the `Program:exit` handlers after the walk, then the `after` hooks. The
-first `Program:exit` therefore sees every rule's matches and sends one request for all of them; the
-other rules read the shared answers and report their own findings at their own severity.
-
-## LLM judge
-
-`judge` answers the same yes/no questions with any AI SDK language model instead of Jev. The model
-returns, for each question, `{ violation: boolean, confidence: number }` through structured output,
-and the plugin reads that as a yes-probability: `confidence` when `violation` is true and
-`1 - confidence` otherwise. Cutoffs keep their meaning, but a judge's confidence is
-self-reported and less calibrated than Jev's probabilities, so tune them again.
-
-```json
-{ "judge": { "model": "openai/gpt-5-mini" }, "rules": [ ... ] }
+```text
+  x acme(no-pii-in-logs): [no-pii-in-logs] Personal data is written to a log. Log an opaque user id instead. (jev-1.14.0 answered yes, 0.98 >= 0.80)
+  ! acme(name-matches-behavior): [name-matches-behavior] The name says read-only, but the body has side effects. Rename it or split it. (jev-1.14.0 answered yes, 0.93 >= 0.60)
 ```
 
-A bare `model` is an [AI Gateway](https://ai-sdk.dev/providers/ai-sdk-providers/ai-gateway) id and needs
-`AI_GATEWAY_API_KEY`. To use a provider directly, point `provider` at an ES module, relative to the
-working directory, whose default export is an AI SDK provider or provider registry; `model` is then
-passed to its `languageModel()`:
+The options are validated when the plugin loads. Ids cannot contain `/`, and the rules take no options in the oxlint config.
+
+## Judge mode
+
+`judge` answers the same questions with any AI SDK chat model. The model returns `{ violation, confidence }` per question, read as a yes-probability. Self-reported confidence is less calibrated than Jev's probabilities, so retune cutoffs. File rules with `location` stay at the file level.
+
+A bare `model` is an AI Gateway id and needs `AI_GATEWAY_API_KEY`:
+
+```json
+{ "judge": { "model": "openai/gpt-5-mini" }, "rules": [] }
+```
+
+To call a provider directly, point `provider` at an ES module, relative to the working directory, whose default export is an AI SDK provider or registry:
 
 ```js
 // judge-provider.mjs
@@ -253,93 +224,47 @@ export default createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 ```
 
 ```json
-{ "judge": { "model": "gpt-5-mini", "provider": "./judge-provider.mjs" }, "rules": [ ... ] }
+{ "judge": { "model": "gpt-5-mini", "provider": "./judge-provider.mjs" }, "rules": [] }
 ```
 
-A judge only answers yes/no questions, so file rules with `location` report at the file level.
-Jev can also be reached through AI Gateway without a judge, by setting `model` to
-`"typesafe-ai/jev"`; that uses `experimental_decide` like the direct provider.
+## CI
 
-## Changed lines only
+Check only what a pull request changed, and fail if the model can't be reached (`ci: "fail"` in the config):
 
-With `changedOnly: true`, or `JEV_CHANGED_ONLY=1` in the environment, the plugin only asks about
-matches that overlap lines changed against `changedBase` (`HEAD` by default). Changed means staged
-or unstaged edits, from `git diff -U0 <changedBase>`; untracked files count as changed throughout.
-A function or call matches when any of its lines changed, a file rule when any line of the file
-changed, and an unchanged file sends no request. Set `changedBase` (or `JEV_CHANGED_BASE`) to
-`origin/main` in a pull-request job to check everything the branch touched.
+```yaml
+- run: npx oxlint -c .oxlintrc.ci.json
+  env:
+    JEV_CHANGED_ONLY: '1'
+    JEV_CHANGED_BASE: origin/${{ github.base_ref }}
+    TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+```
 
-The diff is computed once per repository per oxlint run. If git cannot produce it, for example
-outside a repository, the plugin warns once and checks every line rather than none.
+Fetch the base ref first (for example `actions/checkout` with `fetch-depth: 0`). Changed lines come from `git diff -U0 <base>` plus untracked files; a match counts when any of its lines changed, and a file with no changes sends no request. If git can't produce a diff, the plugin warns and checks every line.
 
-## How it works
-
-At most one initial request per file and rule list (or `createJevPlugin` plugin), holding every
-match whose answer is not cached. A snippet that several questions read is sent once. A file rule
-with `location` includes numbered source and a Choice question. Above 254 nonblank lines, Jev selects
-a range and refines it in follow-up requests with the same full-file context. All requests share the
-per-file `timeoutMs` budget.
-
-Answers are cached one by one under `node_modules/.cache/oxlint-plugin-jev`, keyed by the backend
-and model, the question, the location question if there is one, and the snippet text. Editing one
-function re-asks only the matches inside it; the rest of the file comes from the cache. Changing a
-cutoff, an `id`, a `message`, or a severity does not re-ask anything. Changing the model, the
-backend, or the wording of a question re-asks every match of that question.
-
-Location responses are cached too, including valid uncertain answers. Malformed location answers
-are retried on the next run, including malformed entries already in the cache.
-
-The request runs on a worker thread through the AI SDK, which retries rate limits and server errors
-(two retries, honoring `retry-after`) within `timeoutMs`.
-
-### Cost
-
-Every uncached match is a paid question. A file costs roughly its matches times its questions, and
-a `file` rule sends the whole file. To keep the bill down: cap `maxMatchesPerFile`, keep
-`maxSnippetChars` near your largest functions, use `changedOnly` in local and pre-push runs, keep
-the cache directory between CI runs (for example with `actions/cache` on
-`node_modules/.cache/oxlint-plugin-jev`), and leave `longContext` off unless files exceed Jev's limits.
-An LLM judge sends every snippet and question in one prompt and is billed by that provider.
-
-If Jev can't be asked, because no credential is set (`TYPESAFE_API_KEY`, `TYPESAFE_AI_API_KEY`, `FACTORY_API_KEY`, or `AI_GATEWAY_API_KEY`), the request times out, or the API errors, the plugin prints one warning naming the cause and reports nothing for that file. Set `ci: "fail"` to fail the run instead.
-
-If only a location refinement fails, confirmed violations are still reported at the file level.
-Under CI with `ci: "fail"`, the refinement failure produces a separate diagnostic; otherwise it warns.
-Later matches in that file keep their original locations without further refinement requests.
+To save cost across runs, cache `node_modules/.cache/oxlint-plugin-jev` (for example with `actions/cache`).
 
 ## In the editor
 
-The oxlint VS Code extension lints as you type, and every keystroke inside a match is a paid request that blocks the language server until Jev answers.
-
-Keep `jev/ask` and `jev/suggest` (or your `createJevPlugin` rules) out of the config your editor reads, and put them in an overlay for CI and pre-push. Leave `jsPlugins` in the base config, since the overlay inherits it. `changedOnly` and the per-match cache make editor runs cheaper, but each edit inside a match is still a request.
+The oxlint editor extension lints as you type, and every edit inside a match is a paid request that blocks the language server. Keep the jev rules out of the config your editor reads, and put them in an overlay for CI and pre-push. Leave `jsPlugins` in the base config; the overlay inherits it.
 
 ```json
+// .oxlintrc.ci.json
 {
   "extends": [".oxlintrc.json"],
-  "rules": {
-    "jev/ask": ["error", { "rules": [ ... ] }]
-  }
+  "rules": { "jev/ask": ["error", { "ci": "fail", "rules": [] }] }
 }
 ```
 
 ```sh
-oxlint                        # editor and local runs, no Jev
-oxlint -c .oxlintrc.ci.json   # CI and pre-push, Jev included
+oxlint                        # editor and local runs, no model calls
+oxlint -c .oxlintrc.ci.json   # CI and pre-push
 ```
 
-## Example
+## Caching and cost
 
-`example/` has three rules that a pattern-based linter can't express, a file that fails all three, and a file that passes.
+Each answer is cached under `node_modules/.cache/oxlint-plugin-jev`, keyed by backend, model, question, and snippet. Editing one function re-asks only the matches inside it. Changing a cutoff, id, message, or severity re-asks nothing; changing the model, backend, or a question's wording re-asks every match of that question.
 
-| Rule                    | Fails on                                                | Passes on                                   |
-| ----------------------- | ------------------------------------------------------- | ------------------------------------------- |
-| `no-pii-in-logs`        | `console.log("loaded", user.email, user.phone)`         | `console.log("notified", { userId: id })`   |
-| `name-matches-behavior` | `getUser` that also sends an email                      | The same body named `notifySignIn`          |
-| `no-prompt-injection`   | A customer message pasted into the system prompt string | The message passed as a separate user field |
-
-```sh
-npm run example
-```
+Every uncached match is a paid question, and a `file` rule sends the whole file. Keep costs down with `maxMatchesPerFile`, `changedOnly`, the cache, and the editor overlay.
 
 ## Development
 
@@ -355,4 +280,4 @@ JEV_LIVE=1 FACTORY_API_KEY=... npm test    # the same, through Factory's decisio
 
 ## License
 
-MIT
+MIT. Original work by [Robert Soriano](https://github.com/wobsoriano/oxlint-plugin-jev).
