@@ -10,6 +10,7 @@ new RuleTester().run(
 			'Match.when({ _tag: "Ready" }, handleReady);',
 			'Match.not({ "_tag": "Pending" });',
 			"Ready.make({ value });",
+			"State.cases.Ready.make({ value });",
 			"new NotFound({ id });",
 			"({ _tag: tag, value });",
 		],
