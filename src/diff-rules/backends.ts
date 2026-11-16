@@ -82,9 +82,14 @@ export const TYPESAFE_DEFAULT_BASE_URL = "https://api.typesafe.ai/v1";
 export const TYPESAFE_DEFAULT_MODEL = "jev-latest";
 export const GATEWAY_DEFAULT_DECISION_MODEL = "typesafe-ai/jev";
 
-/** Where the decision model runs: TypeSafe directly, or the TypeSafe model behind AI Gateway. */
+export const FACTORY_DEFAULT_BASE_URL = "https://api.factory.ai";
+
+/** Factory's decision route speaks TypeSafe's wire format, so the TypeSafe provider talks to it. */
+export const factoryDecisionURL = (factoryURL: string): string => `${stripSlashes(factoryURL)}/api/llm/decision/v1`;
+
+/** Where the decision model runs: TypeSafe directly, Factory's TypeSafe-compatible route, or AI Gateway. */
 export type DecisionTarget =
-  | { readonly kind: "typesafe"; readonly apiKey: string; readonly baseURL: string }
+  | { readonly kind: "typesafe" | "factory"; readonly apiKey: string; readonly baseURL: string }
   | { readonly kind: "gateway"; readonly apiKey?: string; readonly baseURL?: string };
 
 const questionRef = (index: number): string => `r${index}`;
@@ -97,7 +102,7 @@ export function decisionModelBackend(options: {
   readonly longContext?: boolean;
 }): Backend {
   const { target } = options;
-  const where = target.kind === "typesafe" ? `typesafe ${stripSlashes(target.baseURL)}` : `gateway ${target.baseURL ?? "default"}`;
+  const where = target.kind === "gateway" ? `gateway ${target.baseURL ?? "default"}` : `${target.kind} ${stripSlashes(target.baseURL)}`;
   return {
     name: "decision-model",
     identity: `decision-model ${where}${options.longContext === true ? " long-context" : ""}`,
@@ -105,7 +110,7 @@ export function decisionModelBackend(options: {
     async ask(rules, input) {
       const ai = await importOptional(() => import("ai"), "decision-model", AI_PACKAGES);
       const model =
-        target.kind === "typesafe"
+        target.kind !== "gateway"
           ? (await importOptional(() => import("@ai-sdk/typesafe-ai"), "decision-model", `${AI_PACKAGES} @ai-sdk/typesafe-ai`))
               .createTypeSafeAi({ apiKey: target.apiKey, baseURL: stripSlashes(target.baseURL) })
               .decisionModel(options.model)
@@ -200,9 +205,17 @@ export function parseJudgeAnswers(json: unknown, rules: ReadonlyArray<DiffRule>,
   });
 }
 
-/** Where the chat model runs: AI Gateway, or any OpenAI-compatible chat completions server. */
+/** Where the chat model runs: AI Gateway, Factory's Anthropic proxy, or any OpenAI-compatible chat completions server. */
 export type JudgeTarget =
   | { readonly kind: "gateway"; readonly apiKey?: string; readonly baseURL?: string }
+  | {
+      readonly kind: "factory";
+      readonly apiKey: string;
+      /** The Factory API host, such as `https://api.factory.ai`. */
+      readonly baseURL: string;
+      /** Sent as `X-Client-Version`; Factory's inference proxy rejects requests without one. */
+      readonly clientVersion: string;
+    }
   | {
       readonly kind: "openai-compatible";
       readonly baseURL: string;
@@ -237,6 +250,14 @@ export function judgeReplySchema(rules: ReadonlyArray<DiffRule>): JSONSchema7 {
   };
 }
 
+const JUDGE_SYSTEM_PROMPT = "You are a careful code reviewer. You reply with a single JSON object.";
+
+/** Factory's inference proxy serves only requests whose system prompt starts with this sentence. */
+export const FACTORY_SYSTEM_PROMPT = "You are Droid, an AI software engineering agent built by Factory.";
+
+/** A Droid CLI version Factory's proxy accepts; `FACTORY_CLIENT_VERSION` overrides it when the minimum moves. */
+export const FACTORY_DEFAULT_CLIENT_VERSION = "0.233.0";
+
 export function llmJudgeBackend(options: {
   readonly target: JudgeTarget;
   readonly model: string;
@@ -246,7 +267,9 @@ export function llmJudgeBackend(options: {
   const where =
     target.kind === "gateway"
       ? `gateway ${target.baseURL ?? "default"}`
-      : `openai-compatible ${stripSlashes(target.baseURL)}${target.structuredOutputs ? "" : " json-object"}`;
+      : target.kind === "factory"
+        ? `factory ${stripSlashes(target.baseURL)}`
+        : `openai-compatible ${stripSlashes(target.baseURL)}${target.structuredOutputs ? "" : " json-object"}`;
   return {
     name: "llm-judge",
     identity: `llm-judge ${where}`,
@@ -261,7 +284,15 @@ export function llmJudgeBackend(options: {
                 ...(target.baseURL === undefined ? {} : { baseURL: target.baseURL }),
               })
               .languageModel(options.model)
-          : (
+          : target.kind === "factory"
+            ? (await importOptional(() => import("@ai-sdk/anthropic"), "llm-judge", `${AI_PACKAGES} @ai-sdk/anthropic`))
+                .createAnthropic({
+                  baseURL: `${stripSlashes(target.baseURL)}/api/llm/a/v1`,
+                  apiKey: target.apiKey,
+                  headers: { authorization: `Bearer ${target.apiKey}`, "x-client-version": target.clientVersion },
+                })
+                .languageModel(options.model)
+            : (
               await importOptional(
                 () => import("@ai-sdk/openai-compatible"),
                 "llm-judge",
@@ -281,7 +312,7 @@ export function llmJudgeBackend(options: {
           model,
           output: ai.Output.object({ schema: ai.jsonSchema<unknown>(judgeReplySchema(rules)), name: "diff_rules" }),
           temperature: 0,
-          system: "You are a careful code reviewer. You reply with a single JSON object.",
+          system: `${target.kind === "factory" ? `${FACTORY_SYSTEM_PROMPT} ` : ""}${JUDGE_SYSTEM_PROMPT}`,
           prompt: renderJudgePrompt(rules, input),
           maxRetries: MAX_RETRIES,
           abortSignal: AbortSignal.timeout(options.timeoutMs),
@@ -346,7 +377,10 @@ const isOff = (value: string | undefined): boolean => value !== undefined && ["0
 
 /** The reason given when no backend is requested and no judge of any kind is configured. */
 export const NO_JUDGE_CREDENTIALS =
-  "no diff-rules judge is configured: set TYPESAFE_API_KEY (or TYPESAFE_AI_API_KEY), AI_GATEWAY_API_KEY, or LLM_JUDGE_BASE_URL with LLM_JUDGE_MODEL, or give a judge command (--command, ANTI_SLOP_DIFF_RULES_COMMAND, or command in the config)";
+  "no diff-rules judge is configured: set TYPESAFE_API_KEY (or TYPESAFE_AI_API_KEY), FACTORY_API_KEY, AI_GATEWAY_API_KEY, or LLM_JUDGE_BASE_URL with LLM_JUDGE_MODEL, or give a judge command (--command, ANTI_SLOP_DIFF_RULES_COMMAND, or command in the config)";
+
+// Factory serves only model aliases such as `jev-latest`; a versioned id gets a 400.
+const isPinnedJevModel = (model: string): boolean => /^jev-\d/.test(model);
 
 /** Build the requested backend, or the first one with credentials when none is requested. */
 export function chooseBackend(
@@ -356,6 +390,8 @@ export function chooseBackend(
   overrides: { readonly model?: string; readonly command?: string },
 ): BackendChoice {
   const typesafeKey = envValue(env, "TYPESAFE_API_KEY") ?? envValue(env, "TYPESAFE_AI_API_KEY");
+  const factoryKey = envValue(env, "FACTORY_API_KEY");
+  const factoryURL = envValue(env, "FACTORY_API_BASE_URL") ?? FACTORY_DEFAULT_BASE_URL;
   const gatewayKey = envValue(env, "AI_GATEWAY_API_KEY");
   // On Vercel, AI Gateway authenticates with the deployment's OIDC token instead of a key.
   const gateway = gatewayKey !== undefined || envValue(env, "VERCEL_OIDC_TOKEN") !== undefined;
@@ -374,7 +410,7 @@ export function chooseBackend(
       ? "decision-model"
       : judgeURL !== undefined
         ? "llm-judge"
-        : gateway
+        : factoryKey !== undefined || gateway
           ? envValue(env, "LLM_JUDGE_MODEL") === undefined
             ? "decision-model"
             : "llm-judge"
@@ -383,7 +419,7 @@ export function chooseBackend(
             : "decision-model");
 
   const nothingConfigured =
-    typesafeKey === undefined && judgeURL === undefined && !gateway && command === undefined;
+    typesafeKey === undefined && factoryKey === undefined && judgeURL === undefined && !gateway && command === undefined;
   if (requested === undefined && config.backend === undefined && nothingConfigured) {
     return { ok: false, name, reason: NO_JUDGE_CREDENTIALS };
   }
@@ -407,8 +443,22 @@ export function chooseBackend(
         }),
       };
     }
+    if (factoryKey !== undefined) {
+      const factoryModel = model ?? TYPESAFE_DEFAULT_MODEL;
+      if (isPinnedJevModel(factoryModel)) {
+        return { ok: false, name, reason: `Factory serves only Jev aliases such as "jev-latest", not the pinned model "${factoryModel}"` };
+      }
+      return {
+        ok: true,
+        backend: decisionModelBackend({
+          ...common,
+          target: { kind: "factory", apiKey: factoryKey, baseURL: factoryDecisionURL(factoryURL) },
+          model: factoryModel,
+        }),
+      };
+    }
     if (!gateway) {
-      return { ok: false, name, reason: "TYPESAFE_API_KEY (or TYPESAFE_AI_API_KEY or AI_GATEWAY_API_KEY) is not set" };
+      return { ok: false, name, reason: "TYPESAFE_API_KEY (or TYPESAFE_AI_API_KEY, FACTORY_API_KEY, or AI_GATEWAY_API_KEY) is not set" };
     }
     const gatewayModel = model === undefined ? GATEWAY_DEFAULT_DECISION_MODEL : model.includes("/") ? model : `typesafe-ai/${model}`;
     return {
@@ -417,20 +467,27 @@ export function chooseBackend(
     };
   }
   if (name === "llm-judge") {
-    if (judgeURL === undefined && !gateway) {
-      return { ok: false, name, reason: "LLM_JUDGE_BASE_URL or AI_GATEWAY_API_KEY is not set" };
+    if (judgeURL === undefined && factoryKey === undefined && !gateway) {
+      return { ok: false, name, reason: "LLM_JUDGE_BASE_URL, FACTORY_API_KEY, or AI_GATEWAY_API_KEY is not set" };
     }
     if (judgeModel === undefined) return { ok: false, name, reason: "LLM_JUDGE_MODEL is not set" };
     const apiKey = envValue(env, "LLM_JUDGE_API_KEY");
     const target: JudgeTarget =
-      judgeURL === undefined
-        ? { kind: "gateway", ...gatewayAuth }
-        : {
+      judgeURL !== undefined
+        ? {
             kind: "openai-compatible",
             baseURL: judgeURL,
             structuredOutputs: !isOff(envValue(env, "LLM_JUDGE_STRUCTURED_OUTPUTS")),
             ...(apiKey === undefined ? {} : { apiKey }),
-          };
+          }
+        : factoryKey !== undefined
+          ? {
+              kind: "factory",
+              apiKey: factoryKey,
+              baseURL: factoryURL,
+              clientVersion: envValue(env, "FACTORY_CLIENT_VERSION") ?? FACTORY_DEFAULT_CLIENT_VERSION,
+            }
+          : { kind: "gateway", ...gatewayAuth };
     return { ok: true, backend: llmJudgeBackend({ target, model: judgeModel, timeoutMs: config.timeoutMs }) };
   }
   if (command === undefined) {

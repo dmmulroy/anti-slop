@@ -7,7 +7,16 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NO_JUDGE_CREDENTIALS, chooseBackend, commandBackend, decisionModelBackend, judgeReplySchema, llmJudgeBackend } from "./backends.ts";
+import {
+  FACTORY_SYSTEM_PROMPT,
+  NO_JUDGE_CREDENTIALS,
+  chooseBackend,
+  commandBackend,
+  decisionModelBackend,
+  factoryDecisionURL,
+  judgeReplySchema,
+  llmJudgeBackend,
+} from "./backends.ts";
 import { resolveConfig } from "./config.ts";
 import type { JudgeInput } from "./input.ts";
 import type { DiffRule } from "./rules.ts";
@@ -158,6 +167,23 @@ test("decision model: the AI SDK retries 5xx and 429, honoring retry-after-ms", 
   });
 });
 
+test("decision model: the Factory target posts TypeSafe's request to Factory's decision route with the Factory key", async () => {
+  await withServer([systemOneReply({ type: "noul", noul: 0.4 }, { type: "noul", noul: 0.6 })], async (server) => {
+    const backend = decisionModelBackend({
+      target: { kind: "factory", apiKey: "fk-test", baseURL: factoryDecisionURL(`${server.url}/`) },
+      model: "jev-latest",
+      timeoutMs: 10_000,
+    });
+    assert.equal(backend.identity, `decision-model factory ${server.url}/api/llm/decision/v1`);
+    const answers = await backend.ask(rules, input("factory diff"));
+    assert.deepEqual(answers.map((answer) => answer.probability), [0.4, 0.6]);
+    const [request] = server.requests;
+    assert.equal(request?.url, "/api/llm/decision/v1/systemone");
+    assert.equal(request?.headers.authorization, "Bearer fk-test");
+    assert.deepEqual((request?.body as { state: unknown }).state, "factory diff");
+  });
+});
+
 // --- Decision model through AI Gateway: what @ai-sdk/gateway sends to POST {baseURL}/decision-model ---
 
 test("decision model: the gateway target posts the SDK's neutral questions with the gateway model id", async () => {
@@ -301,6 +327,40 @@ test("llm judge: the gateway target posts to the gateway's language-model endpoi
   });
 });
 
+test("llm judge: the Factory target posts Anthropic messages with the Droid system prompt and a client version", async () => {
+  const reply: Reply = {
+    body: {
+      id: "msg_1",
+      type: "message",
+      role: "assistant",
+      model: "claude-test-1",
+      content: [{ type: "text", text: verdicts }],
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: { input_tokens: 10, output_tokens: 5 },
+    },
+  };
+  await withServer([reply], async (server) => {
+    const backend = llmJudgeBackend({
+      target: { kind: "factory", apiKey: "fk-test", baseURL: `${server.url}/`, clientVersion: "9.9.9" },
+      model: "claude-test",
+      timeoutMs: 10_000,
+    });
+    assert.equal(backend.identity, `llm-judge factory ${server.url}`);
+    const answers = await backend.ask(rules, input("the diff text"));
+    assert.equal(answers[0]?.probability, 0.9);
+    assert.equal(answers[0]?.model, "claude-test-1");
+    const [request] = server.requests;
+    assert.equal(request?.url, "/api/llm/a/v1/messages");
+    assert.equal(request?.headers.authorization, "Bearer fk-test");
+    assert.equal(request?.headers["x-client-version"], "9.9.9");
+    const body = request?.body as { model: string; system: Array<{ type: string; text: string }> };
+    assert.equal(body.model, "claude-test");
+    // Factory's proxy reads only the first system block and requires it to start with the Droid prompt.
+    assert.ok(body.system[0]?.text.startsWith(FACTORY_SYSTEM_PROMPT), JSON.stringify(body.system));
+  });
+});
+
 // --- Command backend ---
 
 test("command: pipes the prompt to the CLI and parses its stdout", async () => {
@@ -376,11 +436,11 @@ test("chooseBackend: picks the first configured backend and explains missing cre
   const config = resolveConfig({});
   const none = chooseBackend(undefined, config, {}, {});
   assert.deepEqual(none, { ok: false, name: "decision-model", reason: NO_JUDGE_CREDENTIALS });
-  for (const option of ["TYPESAFE_API_KEY", "AI_GATEWAY_API_KEY", "LLM_JUDGE_BASE_URL", "ANTI_SLOP_DIFF_RULES_COMMAND"]) {
+  for (const option of ["TYPESAFE_API_KEY", "FACTORY_API_KEY", "AI_GATEWAY_API_KEY", "LLM_JUDGE_BASE_URL", "ANTI_SLOP_DIFF_RULES_COMMAND"]) {
     assert.ok(NO_JUDGE_CREDENTIALS.includes(option), option);
   }
   const requestedNone = chooseBackend("decision-model", config, {}, {});
-  assert.deepEqual(requestedNone, { ok: false, name: "decision-model", reason: "TYPESAFE_API_KEY (or TYPESAFE_AI_API_KEY or AI_GATEWAY_API_KEY) is not set" });
+  assert.deepEqual(requestedNone, { ok: false, name: "decision-model", reason: "TYPESAFE_API_KEY (or TYPESAFE_AI_API_KEY, FACTORY_API_KEY, or AI_GATEWAY_API_KEY) is not set" });
   const jev = chooseBackend(undefined, config, { TYPESAFE_API_KEY: "k", TYPESAFE_DEFAULT_MODEL: "jev-1.13.0" }, {});
   assert.ok(jev.ok && jev.backend.name === "decision-model" && jev.backend.model === "jev-1.13.0");
   assert.equal(jev.ok && jev.backend.identity, "decision-model typesafe https://api.typesafe.ai/v1");
@@ -398,6 +458,19 @@ test("chooseBackend: picks the first configured backend and explains missing cre
   const typesafeWins = chooseBackend(undefined, config, { AI_GATEWAY_API_KEY: "g", TYPESAFE_API_KEY: "k" }, {});
   assert.ok(typesafeWins.ok && typesafeWins.backend.identity.startsWith("decision-model typesafe"));
 
+  const factory = chooseBackend(undefined, config, { FACTORY_API_KEY: "fk", AI_GATEWAY_API_KEY: "g" }, {});
+  assert.ok(factory.ok && factory.backend.name === "decision-model" && factory.backend.model === "jev-latest");
+  assert.equal(factory.ok && factory.backend.identity, "decision-model factory https://api.factory.ai/api/llm/decision/v1");
+  const factoryHost = chooseBackend(undefined, config, { FACTORY_API_KEY: "fk", FACTORY_API_BASE_URL: "https://dev.api.factory.ai/" }, {});
+  assert.equal(factoryHost.ok && factoryHost.backend.identity, "decision-model factory https://dev.api.factory.ai/api/llm/decision/v1");
+  const typesafeOverFactory = chooseBackend(undefined, config, { FACTORY_API_KEY: "fk", TYPESAFE_API_KEY: "k" }, {});
+  assert.ok(typesafeOverFactory.ok && typesafeOverFactory.backend.identity.startsWith("decision-model typesafe"));
+  const factoryPinned = chooseBackend(undefined, config, { FACTORY_API_KEY: "fk" }, { model: "jev-1.13.0" });
+  assert.equal(factoryPinned.ok, false);
+  assert.ok(!factoryPinned.ok && factoryPinned.reason.includes("jev-1.13.0"));
+  const factoryJudge = chooseBackend(undefined, config, { FACTORY_API_KEY: "fk", AI_GATEWAY_API_KEY: "g", LLM_JUDGE_MODEL: "claude-sonnet-4-5-20250929" }, {});
+  assert.ok(factoryJudge.ok && factoryJudge.backend.name === "llm-judge" && factoryJudge.backend.identity === "llm-judge factory https://api.factory.ai");
+
   const judge = chooseBackend(undefined, config, { LLM_JUDGE_BASE_URL: "http://x", LLM_JUDGE_MODEL: "m" }, {});
   assert.ok(judge.ok && judge.backend.name === "llm-judge" && judge.backend.identity === "llm-judge openai-compatible http://x");
   const jsonObject = chooseBackend("llm-judge", config, { LLM_JUDGE_BASE_URL: "http://x", LLM_JUDGE_MODEL: "m", LLM_JUDGE_STRUCTURED_OUTPUTS: "false" }, {});
@@ -407,7 +480,7 @@ test("chooseBackend: picks the first configured backend and explains missing cre
   const noModel = chooseBackend("llm-judge", config, { LLM_JUDGE_BASE_URL: "http://x" }, {});
   assert.deepEqual(noModel, { ok: false, name: "llm-judge", reason: "LLM_JUDGE_MODEL is not set" });
   const noJudge = chooseBackend("llm-judge", config, { LLM_JUDGE_MODEL: "m" }, {});
-  assert.deepEqual(noJudge, { ok: false, name: "llm-judge", reason: "LLM_JUDGE_BASE_URL or AI_GATEWAY_API_KEY is not set" });
+  assert.deepEqual(noJudge, { ok: false, name: "llm-judge", reason: "LLM_JUDGE_BASE_URL, FACTORY_API_KEY, or AI_GATEWAY_API_KEY is not set" });
 
   const command = chooseBackend(undefined, resolveConfig({ command: "claude -p" }), {}, {});
   assert.ok(command.ok && command.backend.name === "command" && command.backend.model === "claude -p");

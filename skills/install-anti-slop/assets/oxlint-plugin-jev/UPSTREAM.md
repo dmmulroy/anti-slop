@@ -1,7 +1,7 @@
 # oxlint-plugin-jev (vendored build)
 
 - Source: https://github.com/K-Mistele/oxlint-plugin-jev
-- Commit: 741b19b0efd441f84d6e17906d95366cf38e94a4
+- Commit: 13379b9bd5c6bc23357b4c8d220ac19e7ad7e9d7
 - Built with `pnpm build:jev` in anti-slop (`npm ci` and `vp pack` in the `vendor/oxlint-plugin-jev` submodule).
 - Contents: `dist/`, `LICENSE`, `README.md`, and `package.json` keeping only `name`, `version`, `description`, `license`, `type`, `exports`, `files`, `dependencies`, `peerDependencies`, `engines`.
 

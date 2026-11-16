@@ -87,6 +87,7 @@ Get an API key from <https://console.typesafe.ai>, or use an LLM judge (see [Jud
 | Variable | Meaning |
 | --- | --- |
 | `TYPESAFE_API_KEY` | TypeSafe API key (`TYPESAFE_AI_API_KEY` works too). |
+| `FACTORY_API_KEY` | A Factory API key. Without a TypeSafe key, Jev runs on Factory's decision endpoint (`FACTORY_API_BASE_URL`, default `https://api.factory.ai`). Factory serves only aliases such as `jev-latest`, so a pinned `model` is refused, and the org needs the `decision_models` feature. |
 | `AI_GATEWAY_API_KEY` | Needed instead when `model` is an AI Gateway id such as `typesafe-ai/jev`, or for an LLM judge without a `provider` module. |
 | `TYPESAFE_BASE_URL` | Another TypeSafe host, such as a mock, without `/v1`. |
 | `JEV_CHANGED_ONLY` | `1` or `0`; overrides `changedOnly`. `lint-changed.ts` sets it (see below). |
@@ -273,7 +274,7 @@ stays the jev-free command for the editor and quick runs. Add your typecheck and
 
 ## CI
 
-- Set `TYPESAFE_API_KEY` (or `AI_GATEWAY_API_KEY`) as a secret. Without it, or when Jev times out or
+- Set `TYPESAFE_API_KEY` (or `FACTORY_API_KEY` or `AI_GATEWAY_API_KEY`) as a secret. Without it, or when Jev times out or
   errors, the plugin warns and reports nothing, except under `CI` with `ci: "fail"`, which both
   plugin entries set, where the run fails.
 - On pull requests, run `oxlint -c oxlint.jev.config.ts` with `JEV_CHANGED_ONLY=1` and
