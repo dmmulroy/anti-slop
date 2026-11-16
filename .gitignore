@@ -1,4 +1,6 @@
 node_modules/
 dist/
+# The vendored, built oxlint-plugin-jev package ships its dist.
+!skills/install-anti-slop/assets/oxlint-plugin-jev/dist/
 .DS_Store
 *.log

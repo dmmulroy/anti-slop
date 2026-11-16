@@ -19,7 +19,8 @@ Every application capability is a `Context.Service` class. Its constructor is th
 each dependency from the environment. Its layer is `static readonly layer = Layer.effect(this, this.make)`. Effect v4
 has no `Layer.scoped`: `Layer.effect` runs `make` in the layer's scope, so `Effect.acquireRelease` inside `make`
 releases when that scope closes. No function takes a service as an argument, and there is no separate `*Live`
-constant or `makeXWith(dep)` variant.
+constant or `makeXWith(dep)` variant. Operations use the yielded services directly: never capture `Effect.context` to
+re-provide it later; yield each service.
 
 ```ts
 // src/AppRegistry.ts

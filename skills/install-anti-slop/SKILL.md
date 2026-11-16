@@ -24,7 +24,7 @@ Complete when the operation and target path are established and pre-existing wor
    node <skill-directory>/scripts/install.mjs
    ```
 
-   This creates `tools/oxlint/anti-slop/`. Pass another relative destination as the first argument when the repository has an established tooling layout. The script refuses to replace an existing destination; route existing copies through the update procedure rather than `--force`.
+   This creates `tools/oxlint/anti-slop/`. Pass another relative destination as the first argument when the repository has an established tooling layout. Add `--jev` when the user opts into the jev checks below: it also copies the built `oxlint-plugin-jev` fork from `assets/oxlint-plugin-jev/` to `oxlint-plugin-jev/` beside the plugin (`--jev=<path>` for another place). The script refuses to replace an existing destination; route existing copies through the update procedure rather than `--force`.
 
    Preserve the nested `vendor/eslint-stylistic/LICENSE` and `UPSTREAM.md`; they travel with the copied rule. Readability enforcement is self-contained and requires no Stylistic plugin dependency.
 
@@ -74,6 +74,7 @@ Complete when the operation and target path are established and pre-existing wor
      "anti-slop/no-reduce-accumulator-copy": "error",
      "anti-slop/no-chained-type-assertions": "error",
      "anti-slop/no-conditional-spread": "error",
+     "anti-slop/no-disabled-type-assertion-rules": "error",
      "anti-slop/no-known-value-widening": "error",
      "anti-slop/no-module-mocking": "error",
      "anti-slop/no-object-parameters": "error",
@@ -110,9 +111,16 @@ Complete when the operation and target path are established and pre-existing wor
      "anti-slop-effect/no-manual-tag-comparison": "error",
      "anti-slop-effect/no-manual-tagged-construction": "error",
      "anti-slop-effect/no-manual-tagged-type": "error",
+     "anti-slop-effect/no-ordie-in-service-construction": "error",
      "anti-slop-effect/no-service-constructor-imports": "error",
+     "anti-slop-effect/no-service-parameters": "error",
+     "anti-slop-effect/no-test-code-in-src": "error",
      "anti-slop-effect/prefer-effect-match": "error",
      "anti-slop-effect/prefer-tagged-error-handling": "error",
+     "anti-slop-effect/prefer-yield-service": "error",
+     "anti-slop-effect/require-cause-when-narrowing": "error",
+     "anti-slop-effect/require-operation-span": "error",
+     "anti-slop-effect/require-service-make-layer": "error",
    },
    ```
 
@@ -137,6 +145,19 @@ Complete when the operation and target path are established and pre-existing wor
    ```
 
    Complete when the generic rules and eligible Effect rules are registered and existing configuration is preserved.
+
+   Optional, paid checks. Offer them only when the user opts in, because each match or diff is a paid model request:
+
+   - **Jev rules** (the Effect questions for Effect repositories, the Martin Fowler smell questions for any repository): these use Kyle Mistele's fork of `oxlint-plugin-jev`, which is not on npm. Run the installer with `--jev` and add the vendored build as a local package so its dependencies (`ai`, `@ai-sdk/typesafe-ai`, `zod`, `synckit`) install normally, for example `npm install --save-dev ./tools/oxlint/oxlint-plugin-jev`, which records `"oxlint-plugin-jev": "file:tools/oxlint/oxlint-plugin-jev"`. It needs Node 22 or later. Add `tools/oxlint/oxlint-plugin-jev/**` to the lint and format ignores.
+     - Register the plugin entries in the base `jsPlugins` without enabling any of their rules: `{ name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" }` (Effect repositories) and `{ name: "anti-slop-martinfowler-jev", specifier: "./tools/oxlint/anti-slop/martinfowler/jev-plugin.ts" }`. Every question is its own rule, `<plugin>/<id>`.
+     - Create `oxlint.jev.config.ts` from the overlay in `docs/jev.md` upstream. It spreads the base config (`...base`, `rules: { ...base.rules }`, `overrides: [...(base.overrides ?? [])]`) instead of `extends: [base]`, because oxlint rejects relative `jsPlugins` specifiers that arrive through `extends` in a TypeScript config. Enable every `effectSourceJevRules` id at `"error"` and every `martinFowlerJevRules` id at `"warn"`, then add an `overrides` block for test globs that turns the source and smell rules `"off"` and `anti-slop-effect-jev/test-cannot-fail` `"error"`. Keep the user's per-question severity choices; `"off"` sends nothing.
+     - Add `"lint:jev": "node tools/oxlint/anti-slop/jev/lint-changed.ts -c oxlint.jev.config.ts"` and `"lint:jev:full": "node tools/oxlint/anti-slop/jev/lint-changed.ts --all -c oxlint.jev.config.ts"`, then `check:fast` running the normal checks plus `lint:jev`, and `check:full` running them plus `lint:jev:full`. `lint-changed.ts` lints only changed files and sets `JEV_CHANGED_ONLY=1`, so jev asks only about changed functions; `--all` sets it to `0`. The runner needs Node 22.18 or later.
+     - Tell the user to set `TYPESAFE_API_KEY` (or `AI_GATEWAY_API_KEY` for an AI Gateway model id), as a CI secret too; both plugin entries set `ci: "fail"`, so a CI run without a key fails. For pull-request jobs, set `JEV_CHANGED_ONLY=1` and `JEV_CHANGED_BASE=origin/<base>`. For judge mode (any AI SDK chat model instead of Jev), add `judge: { model }` in the vendored `plugin.ts` and `jev-plugin.ts`; a bare model id goes through AI Gateway (`AI_GATEWAY_API_KEY`), or `judge.provider` names a module default-exporting an AI SDK provider, whose package the user installs.
+     - The two plugins send up to two requests per file. If the user wants one, build a single `createJevPlugin` from both presets as `docs/jev.md` ("Two plugins, or one") shows and register it instead.
+   - **Martin Fowler AST smells:** register `anti-slop-martinfowler` with its rules at `"warn"` (see the README). These are free and can run in the editor.
+   - **Diff rules:** add `"lint:diff": "node tools/oxlint/anti-slop/diff-rules/run.ts"` and append it to `check:full` only, never `check:fast`. They need `TYPESAFE_API_KEY`, `LLM_JUDGE_BASE_URL` plus `LLM_JUDGE_MODEL`, or a judge `command`; without credentials they warn and exit 0. The model backends load the Vercel AI SDK from the consumer's `node_modules`, so install, as development dependencies, only what the chosen backend needs (versions from `docs/diff-rules.md` "Dependencies" upstream): `ai zod @ai-sdk/typesafe-ai` for the decision model against TypeSafe directly, `ai zod` for the decision model or LLM judge through AI Gateway, and `ai zod @ai-sdk/openai-compatible` for an LLM judge at `LLM_JUDGE_BASE_URL`; the `command` backend needs nothing. A typecheck that includes the vendored folder needs `ai` installed. Keep the vendored copy outside `node_modules`, where Node does not strip types. Add `anti-slop-diff-rules.config.ts` only for local rule, cutoff, or exclude changes.
+
+   Record the vendored `oxlint-plugin-jev` fork commit (from `tools/oxlint/oxlint-plugin-jev/UPSTREAM.md`) in anti-slop's `UPSTREAM.md` when any jev rules are installed.
 
 4. Run the repository's lint command and typecheck. For Vite+, run the repository's full `vp check` command after adding both lint and format ignores. If findings appear in owned project source, report them and fix them only when the user asked for migration/cleanup. Do not suppress rules, weaken rule severity, add unsafe casts, or mechanically launder types to make lint pass.
 

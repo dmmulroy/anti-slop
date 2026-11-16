@@ -15,7 +15,7 @@ export default defineConfig({
 	},
 	overrides: [
 		{
-			files: ["src/rules/require-readable-spacing-cli.test.ts"],
+			files: ["src/rules/require-readable-spacing-cli.test.ts", "src/jev/plugin.test.ts"],
 			rules: { "effecttsgo/node-builtin-import": "off" },
 		},
 	],

@@ -29,8 +29,12 @@ export class WidgetService extends Context.Service<
 >()("@app/widgets/WidgetService", {
   make: Effect.gen(function* () {
     const provider = yield* WidgetProvider; // dependencies come from yield*, never from parameters
+
     return {
-      list: (input) => listWidgets(input).pipe(Effect.provideService(WidgetProvider, provider)),
+      list: Effect.fn("widget_service.list")(function* (input: ListWidgetsInput) {
+        const widgets = yield* provider.fetch({ organizationId: input.organizationId });
+        return widgets.filter((widget) => !widget.archived);
+      }),
     };
   }),
 }) {
@@ -41,6 +45,9 @@ export class WidgetService extends Context.Service<
 const AppLayer = WidgetService.layer.pipe(Layer.provide(WidgetProvider.layer));
 ```
 
+- `make` yields each dependency once and the operations use the yielded value directly. Never capture
+  `Effect.context` to re-provide it later, and never re-provide a yielded service with `Effect.provide` or
+  `Effect.provideService`; yield each service with `yield*` instead.
 - `WidgetService.make` is the constructor. Hosts that build the service themselves `yield*` it. An example is a
   Durable Object that constructs per-instance services. Tests can do the same, providing the dependencies.
 - `WidgetService.layer` is what runtime composition provides. Effect v4 has no `Layer.scoped`: `Layer.effect` runs
@@ -48,33 +55,66 @@ const AppLayer = WidgetService.layer.pipe(Layer.provide(WidgetProvider.layer));
 - A variant layer is derived from `layer`, not from a second constructor. For example,
   `static readonly layerSelfBinding = WidgetService.layer.pipe(Layer.provide(selfBindingHttpClient))`.
 
-When construction needs plain configuration, such as options, handler functions or processors, make both static
-functions of that configuration. Their arguments are only plain values, never services, layers or contexts:
+When construction needs plain configuration, such as a batch size or concurrency limit, make both static functions of
+that configuration. Their arguments are only plain values, never services, layers, contexts, or handler functions with
+their own requirements. Behavior that differs per host is a service the host provides:
 
 ```ts
-export class MailboxProcessing extends Context.Service<MailboxProcessing, MailboxProcessingOperations>()(
-  "@app/delivery/MailboxProcessing",
-) {
-  static readonly make = <R>(options: MailboxProcessingOptions, processors: MailboxProcessors<R>) =>
+// The handlers are their own service. Its dependencies are yielded in its own make.
+export class MailboxProcessors extends Context.Service<
+  MailboxProcessors,
+  {
+    readonly deliver: (input: { readonly message: MailboxMessage }) => Effect.Effect<void, DeliveryError>;
+  }
+>()("@app/delivery/MailboxProcessors", {
+  make: Effect.gen(function* () {
+    const webhooks = yield* WebhookClient;
+    return {
+      deliver: ({ message }) =>
+        webhooks.post({ message }).pipe(Effect.withSpan("mailbox_processors.deliver")),
+    };
+  }),
+}) {
+  static readonly layer = Layer.effect(this, this.make);
+}
+
+export class MailboxProcessing extends Context.Service<
+  MailboxProcessing,
+  { readonly processReady: Effect.Effect<void, MailboxUnavailable | DeliveryError> }
+>()("@app/delivery/MailboxProcessing") {
+  static readonly make = (options: MailboxProcessingOptions) =>
     Effect.gen(function* () {
-      const services = yield* Effect.context<MailboxProcessingBackend | Crypto.Crypto>();
-      return { processReady: processReady(options, processors).pipe(Effect.provide(services)) };
+      const backend = yield* MailboxProcessingBackend;
+      const processors = yield* MailboxProcessors;
+
+      const processReady = Effect.gen(function* () {
+        const ready = yield* backend.claimReady({ limit: options.batchSize });
+        yield* Effect.forEach(
+          ready,
+          (message) =>
+            processors
+              .deliver({ message })
+              .pipe(Effect.andThen(backend.markDelivered({ messageId: message.id }))),
+          { concurrency: options.concurrency, discard: true },
+        );
+      }).pipe(Effect.withSpan("mailbox_processing.process_ready"));
+
+      return MailboxProcessing.of({ processReady });
     });
 
-  static readonly layer = <R>(options: MailboxProcessingOptions, processors: MailboxProcessors<R>) =>
-    Layer.effect(
-      MailboxProcessing,
-      Effect.gen(function* () {
-        const operations = yield* MailboxProcessing.make(options, processors);
-        const context = yield* Effect.context<R>();
-        return MailboxProcessing.of({ processReady: operations.processReady.pipe(Effect.provide(context)) });
-      }),
-    );
+  static readonly layer = (options: MailboxProcessingOptions) =>
+    Layer.effect(MailboxProcessing, MailboxProcessing.make(options));
 }
+
+// Runtime composition:
+// MailboxProcessing.layer(options).pipe(Layer.provide(MailboxProcessors.layer), Layer.provide(...))
 ```
 
-Here `make` leaves the processors' requirements `R` open, for hosts that supply them per call, such as a Durable Object
-alarm. `layer` takes them once, when the layer is built.
+`make` yields the backend and the processors and uses them directly, so no requirement is left open to capture. A host
+that builds the service itself, such as a Durable Object whose alarm handlers depend on the instance, runs
+`MailboxProcessing.make(options)` with its own handlers provided as a value:
+`Effect.provideService(MailboxProcessors, MailboxProcessors.of({ deliver: ... }))`. That provides a newly built
+implementation, which is different from re-providing a service it already yielded.
 
 Prefer leaving dependencies in a substantial operation's `R` channel and satisfying them at runtime composition.
 Capturing a yielded dependency is reasonable when an acquired resource or configured client is genuinely layer-local
