@@ -9,7 +9,7 @@ question about the change. Yes means the change violates the rule.
 | Kind | Looks at | Answered by | Runs in |
 | --- | --- | --- | --- |
 | AST rules (`anti-slop/*`, `anti-slop-effect/*`) | One syntax node at a time | Deterministic code in Oxlint | Editor, `lint`, `check:fast`, `check:full`, CI |
-| Jev rules (`jev/ask`, see [jev.md](jev.md)) | One function, call, or file | A decision model, per match | `check:fast` (changed files), `check:full` (all files) |
+| Jev rules (`anti-slop-effect-jev/*`, `anti-slop-martinfowler-jev/*`, see [jev.md](jev.md)) | One function, call, or file | A decision model or LLM judge, one request per file per plugin | `check:fast` (changed files and functions), `check:full` (all files) |
 | Diff rules (`diff-rules/run.ts`, this page) | The whole change: every touched file, the commits, and their history | A decision model, a chat model, or a CLI agent | `check:full`, optionally a pre-push hook, CI on pull requests |
 
 Use an AST rule whenever the pattern is syntactic, because it is free, exact, and instant. Use a

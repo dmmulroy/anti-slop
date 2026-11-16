@@ -2,6 +2,10 @@
 // Runs oxlint on the JS/TS files changed in the working tree: staged, unstaged, and untracked
 // files that are not ignored. `--all` lints the whole project instead.
 //
+// It also sets `JEV_CHANGED_ONLY` for oxlint-plugin-jev, unless the caller already set it: `1` by
+// default, so jev only asks about functions, calls, and file rules on changed lines, and `0` with
+// `--all`, so a full run asks about everything.
+//
 // Usage: node lint-changed.ts [--all] [--ext=.ts,.tsx] [--oxlint=<bin>] [oxlint args...]
 //
 // Every argument the runner does not recognize is passed to oxlint unchanged, so
@@ -14,7 +18,7 @@
 
 // This is a standalone CLI outside any Effect runtime, so Effect's platform services and logger do
 // not apply.
-// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/global-console
+// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/global-console, effecttsgo/process-env
 
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { statSync } from "node:fs";
@@ -90,6 +94,7 @@ function changedFiles(): string[] {
 function runOxlint(paths: ReadonlyArray<string>): number {
   const result = spawnSync(oxlintBin, [...oxlintArgs, ...paths], {
     stdio: "inherit",
+    env: { ...process.env, JEV_CHANGED_ONLY: process.env.JEV_CHANGED_ONLY ?? (lintAll ? "0" : "1") },
     // npm and pnpm install `.cmd` shims on Windows, which spawn can only start through a shell.
     shell: process.platform === "win32",
   });

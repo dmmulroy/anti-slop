@@ -1,0 +1,29 @@
+{
+  "name": "oxlint-plugin-jev",
+  "version": "0.1.3",
+  "description": "Oxlint JS plugin that lints code with plain-English rules answered by TypeSafe Jev or any AI SDK model.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@ai-sdk/typesafe-ai": "^3.0.40",
+    "ai": "^7.0.173",
+    "synckit": "^0.11.13",
+    "zod": "^4.6.7"
+  },
+  "peerDependencies": {
+    "oxlint": ">=1.83.0"
+  },
+  "engines": {
+    "node": ">= 22"
+  }
+}

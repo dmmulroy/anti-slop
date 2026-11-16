@@ -67,7 +67,9 @@ Complete when every incoming change is classified as applied, already present, i
 
 ## 4. Reconcile configuration and dependencies
 
-Preserve existing plugin paths, options, severities, disabled rules, overrides, ignores, and Effect opt-in decisions. Treat jev overlay configs (`oxlint.jev.config.*`), `anti-slop-diff-rules.config.*`, and edited questions or cutoffs in the vendored `jev/`, `martinfowler/jev-rules.ts`, and `diff-rules/rules.ts` as local customizations. Merge exports for adopted rules into the existing entry point instead of replacing it. Check native companion rules when adopting related custom rules.
+Preserve existing plugin paths, options, severities, disabled rules, overrides, ignores, and Effect opt-in decisions. Treat jev overlay configs (`oxlint.jev.config.*`), per-question jev severities, `anti-slop-diff-rules.config.*`, and edited questions, cutoffs, or plugin options in the vendored `jev/`, `martinfowler/jev-rules.ts`, `martinfowler/jev-plugin.ts`, and `diff-rules/rules.ts` as local customizations.
+
+The vendored `oxlint-plugin-jev` package (usually `tools/oxlint/oxlint-plugin-jev/`) is a build, not owned source: replace it whole from `assets/oxlint-plugin-jev/` (or a build of the fork commit the user names), compare the commits in the two `UPSTREAM.md` files, reinstall it so its dependencies update, and review the fork's README for changed options. An installation still on the `jev/ask`/`jev/suggest` rules migrates by registering `jev/plugin.ts` and `martinfowler/jev-plugin.ts` and moving each question into the overlay as `<plugin>/<id>` at the severity its list had, carrying over local option values into the plugin entries. Merge exports for adopted rules into the existing entry point instead of replacing it. Check native companion rules when adopting related custom rules.
 
 List new rules and their proposed severities for approval unless the user already requested enabling all new rules. Existing disabled rules stay disabled. Merely adding a new rule implementation need not enable it.
 

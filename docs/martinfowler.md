@@ -8,8 +8,10 @@ coding agent which refactoring to apply. It has two parts:
   smell that syntax can detect precisely. These rules are deterministic and free, so they can run in
   the editor.
 - **`martinFowlerJevRules`**, a preset of plain-English questions (`src/martinfowler/jev-rules.ts`)
-  for smells that need judgement, answered by [TypeSafe Jev](https://typesafe.ai) through the jev
-  fork's `jev/suggest` rule. These cost a request per match, so they run only on changed files.
+  for smells that need judgement, answered by [TypeSafe Jev](https://typesafe.ai) (or an LLM judge)
+  through the jev fork. `src/martinfowler/jev-plugin.ts` turns it into the oxlint plugin
+  `anti-slop-martinfowler-jev`, one rule per smell. These cost a request per file, so they run only
+  on changed code.
 
 Every diagnostic, from either part, has the same form, because a coding model reads it:
 
@@ -22,7 +24,7 @@ Every rule should run at `warn`. A smell is a prompt to look, not proof of a def
 ## Smells, detectors, and refactorings
 
 Smell names and refactoring names are the ones Fowler uses. The detector column names the rule id;
-"AST" rules are in `anti-slop-martinfowler`, "jev" rules are entries in `martinFowlerJevRules`.
+"AST" rules are in `anti-slop-martinfowler`, "jev" rules are entries in `martinFowlerJevRules`, configured as `anti-slop-martinfowler-jev/<id>`.
 
 | Smell (ch. 3) | Detector | Refactoring | Effect form |
 | --- | --- | --- | --- |
@@ -147,11 +149,19 @@ export default defineConfig({
 
 ## Jev preset
 
-Each entry in `martinFowlerJevRules` is `{ id, target, question, cutoff, location?, message }`.
-`question` lists its carve-outs first and ends with the yes/no question; "yes" means "this is the
-smell". `message` replaces the plugin's default diagnostic text so the agent gets the smell and the
-refactoring. It requires the jev fork (`K-Mistele/oxlint-plugin-jev`), which adds the `jev/suggest`
-rule and the per-rule `message` field; upstream `jev/ask` does not accept `message`.
+Each entry in `martinFowlerJevRules` is a `JevRule` from `oxlint-plugin-jev`, `{ id, target,
+question, cutoff, location?, message }`, with `message` required. `question` lists its carve-outs
+first and ends with the yes/no question; "yes" means "this is the smell". `message` replaces the
+plugin's default diagnostic text so the agent gets the smell and the refactoring:
+
+```text
+[feature-envy] Possibly Feature Envy: ... Consider Move Function ... (jev-1.13.0 answered yes, 0.91 >= 0.75)
+```
+
+It requires the jev fork (`K-Mistele/oxlint-plugin-jev`) for `createJevPlugin` and the per-rule
+`message` field; upstream `oxlint-plugin-jev` has neither. How anti-slop and consumers get the fork
+is described in [`docs/jev.md`](./jev.md#the-jev-fork). Each id is configured as
+`anti-slop-martinfowler-jev/<id>`.
 
 | Id | Target | Cutoff | Location |
 | --- | --- | --- | --- |
@@ -185,43 +195,61 @@ that are plain data by design are not data classes. Only classes with getters, s
 mutable fields whose rules live in other code are reported.
 
 `"function"` rules send one match per function per rule, and the plugin's `maxMatchesPerFile` caps
-matches across all rules in source order. `martinFowlerJevOptions` raises the cap to 60; in files
-with many functions, raise it further or drop function rules you do not need.
+matches across all of its rules in source order. `martinFowlerJevOptions` raises the cap to 60; in
+files with many functions, raise it further in `jev-plugin.ts` or turn function rules you do not
+need `"off"`.
 
-### Enable the preset on changed files only
+### Enable the plugin on changed code only
 
-Keep the base config jev-free. Put `jev/suggest` in an overlay that extends it, and run that overlay
-only on changed files through the jev runner in `src/jev` (`lint-changed.ts`, described in
-[`docs/jev.md`](./jev.md)), as `check:fast` (changed files) and `check:full` (everything).
+Register `anti-slop-martinfowler-jev` in the base config without enabling its rules, so the editor
+never calls Jev, and enable every smell at `"warn"` in the jev overlay. Turn them off for test files.
+
+```ts
+// oxlint.config.ts
+jsPlugins: [
+  {
+    name: "anti-slop-martinfowler-jev",
+    specifier: "./tools/oxlint/anti-slop/martinfowler/jev-plugin.ts",
+  },
+],
+```
 
 ```ts
 // oxlint.jev.config.ts
-import { defineConfig } from "oxlint";
+import type { OxlintConfig } from "oxlint";
 
-import base from "./oxlint.config.ts";
+import baseConfig from "./oxlint.config.ts";
 import {
-  martinFowlerJevOptions,
+  martinFowlerJevPluginName,
   martinFowlerJevRules,
 } from "./tools/oxlint/anti-slop/martinfowler/jev-rules.ts";
 
+const severities = (severity: "error" | "warn" | "off") =>
+  Object.fromEntries(martinFowlerJevRules.map((rule) => [`${martinFowlerJevPluginName}/${rule.id}`, severity]));
+
+// Widened so `base.rules` and `base.overrides` typecheck even when the base sets neither.
+const base: OxlintConfig = baseConfig;
 const testFiles = ["**/*.test.*", "**/*.spec.*", "test/**", "tests/**"];
 
-export default defineConfig({
-  extends: [base],
-  overrides: [
-    {
-      files: ["**/*.{js,mjs,cjs,jsx,ts,mts,cts,tsx}"],
-      excludeFiles: testFiles,
-      rules: {
-        "jev/suggest": [
-          "warn",
-          { ...martinFowlerJevOptions, ci: "fail", rules: [...martinFowlerJevRules] },
-        ],
-      },
-    },
-  ],
-});
+// An annotation rather than `defineConfig`: TypeScript 7 reports this spread as "a union type that
+// is too complex to represent" when inferred through `defineConfig`.
+const config: OxlintConfig = {
+  ...base,
+  rules: {
+    ...base.rules,
+    ...severities("warn"),
+    // Per-smell severity, for example:
+    // "anti-slop-martinfowler-jev/comments": "off",
+  },
+  overrides: [...(base.overrides ?? []), { files: testFiles, rules: severities("off") }],
+};
+
+export default config;
 ```
+
+Run the overlay through `check:fast` (changed files, and with `JEV_CHANGED_ONLY=1` only changed
+functions) and `check:full` (everything), using `lint-changed.ts` as described in
+[`docs/jev.md`](./jev.md#lint-only-what-changed):
 
 ```json
 {
@@ -232,8 +260,10 @@ export default defineConfig({
 }
 ```
 
-If the overlay already configures `jev/ask` with the Effect preset, keep both: `jev/ask` reports
-policy errors and `jev/suggest` reports smells as warnings.
+If the overlay also enables the Effect jev plugin, merge both sets of rules into one overlay: the
+Effect questions report errors and the smells report warnings. The two plugins send separate
+requests, so a file costs up to two requests; [`docs/jev.md`](./jev.md#two-plugins-or-one) shows
+how to build one plugin from both presets for one request per file.
 
 ### Editing the preset
 
@@ -241,4 +271,5 @@ Change a question's leading carve-out sentence when a legitimate pattern keeps f
 smell per entry. `src/martinfowler/jev-rules.test.ts` checks that ids are unique and kebab-case,
 targets are valid, cutoffs are in (0, 1], location cutoffs are in (0.5, 1], questions end with "?",
 and every message starts with "Possibly " and contains "Consider ". Run it with
-`tsx src/martinfowler/jev-rules.test.ts` after editing.
+`tsx src/martinfowler/jev-rules.test.ts` after editing. `src/jev/plugin.test.ts` checks that every id
+becomes the rule `anti-slop-martinfowler-jev/<id>`.

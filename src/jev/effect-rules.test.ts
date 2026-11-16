@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 
-import { effectSourceJevRules, effectTestJevRules, type JevRuleConfig } from "./effect-rules.ts";
+import type { JevRule } from "oxlint-plugin-jev";
+
+import { effectSourceJevRules, effectTestJevRules } from "./effect-rules.ts";
 
 const targets = new Set(["function", "call", "jsx", "file"]);
-const rules: ReadonlyArray<JevRuleConfig> = [...effectSourceJevRules, ...effectTestJevRules];
+const rules: ReadonlyArray<JevRule> = [...effectSourceJevRules, ...effectTestJevRules];
 
 assert.ok(effectSourceJevRules.length > 0, "source rules must not be empty");
 assert.ok(effectTestJevRules.length > 0, "test rules must not be empty");

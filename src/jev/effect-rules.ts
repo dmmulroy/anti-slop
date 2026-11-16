@@ -1,28 +1,25 @@
 /**
- * Plain-English rules for `oxlint-plugin-jev`'s `jev/ask`, encoding the Effect review policy in
- * `skills/effect-program-design`. "Yes" means "report". Each question states its carve-outs
+ * Plain-English rules for `oxlint-plugin-jev`'s `createJevPlugin`, encoding the Effect review
+ * policy in `skills/effect-program-design`. `./plugin.ts` turns each entry into its own oxlint
+ * rule, `anti-slop-effect-jev/<id>`. "Yes" means "report". Each question states its carve-outs
  * first and ends with the yes/no question.
  *
  * Every rule targets `"file"`. The plugin sends one match per rule per matching node, and
- * `maxMatchesPerFile` caps matches across all rules in source order, so `"call"` and `"function"`
- * rules exhaust the cap on the first few calls or callbacks of an Effect file and leave the rest
- * unchecked. A file rule is one match per file, and `location` still points the diagnostic at
- * the offending line.
+ * `maxMatchesPerFile` caps matches across all of a plugin's rules in source order, so `"call"`
+ * and `"function"` rules exhaust the cap on the first few calls or callbacks of an Effect file and
+ * leave the rest unchecked. A file rule is one match per file, and `location` still points the
+ * diagnostic at the offending line.
  */
-export type JevTarget = "function" | "call" | "jsx" | "file";
+import type { JevRule } from "oxlint-plugin-jev";
 
-export interface JevRuleConfig {
-  readonly id: string;
-  readonly target: JevTarget;
-  readonly question: string;
-  readonly cutoff: number;
-  readonly location?: { readonly question: string; readonly cutoff: number };
-}
+/** The oxlint plugin name `./plugin.ts` registers; each rule is configured as `<name>/<id>`. */
+export const effectJevPluginName = "anti-slop-effect-jev";
 
 /**
  * Plugin-level options sized for whole-file rules. A file longer than `maxSnippetChars` is
- * truncated and loses its location, so raise it for repositories with long modules. Every rule
- * resends the whole file, so request size grows with rule count times file size.
+ * truncated and loses its location, so raise it for repositories with long modules. The file is
+ * sent once per request however many file rules read it, so request size is about the file plus
+ * one question per enabled rule.
  */
 export const effectJevOptions = {
   maxMatchesPerFile: 25,
@@ -30,8 +27,8 @@ export const effectJevOptions = {
   timeoutMs: 60_000,
 } as const;
 
-/** For application and library source. Wire these to source globs and exclude test files. */
-export const effectSourceJevRules: ReadonlyArray<JevRuleConfig> = [
+/** For application and library source. Turn these off for test globs. */
+export const effectSourceJevRules: ReadonlyArray<JevRule> = [
   {
     id: "single-use-abstraction",
     target: "file",
@@ -140,8 +137,8 @@ export const effectSourceJevRules: ReadonlyArray<JevRuleConfig> = [
   },
 ];
 
-/** For test files only. Wire these to test globs so they replace the source rules there. */
-export const effectTestJevRules: ReadonlyArray<JevRuleConfig> = [
+/** For test files only. Enable these for test globs and turn the source rules off there. */
+export const effectTestJevRules: ReadonlyArray<JevRule> = [
   {
     id: "test-cannot-fail",
     target: "file",

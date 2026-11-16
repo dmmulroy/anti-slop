@@ -1,6 +1,8 @@
 /**
- * Plain-English smell rules for the jev fork's `jev/suggest` rule, one per code smell from Martin
- * Fowler's *Refactoring* (2nd ed., chapter 3) that needs judgement rather than syntax. "Yes" means
+ * Plain-English smell rules for the jev fork's `createJevPlugin`, one per code smell from Martin
+ * Fowler's *Refactoring* (2nd ed., chapter 3) that needs judgement rather than syntax.
+ * `./jev-plugin.ts` turns each entry into its own oxlint rule, `anti-slop-martinfowler-jev/<id>`,
+ * meant to run at `warn`. "Yes" means
  * "this is the smell". Each question states its carve-outs first and ends with the yes/no
  * question. `message` is the diagnostic text the coding agent reads: it names the smell, says why
  * it matters, and names the refactoring (with its Effect form) to apply.
@@ -11,19 +13,16 @@
  * need the body or the types read.
  *
  * `"function"` rules send one match per function per rule, and the plugin's `maxMatchesPerFile`
- * caps matches across all rules in source order, so raise it (see `martinFowlerJevOptions`) or
- * drop rules when files hold many functions.
+ * caps matches across all of its rules in source order, so raise it (see
+ * `martinFowlerJevOptions`) or turn rules off when files hold many functions.
  */
-export type MartinFowlerJevTarget = "function" | "call" | "jsx" | "file";
+import type { JevRule } from "oxlint-plugin-jev";
 
-export interface MartinFowlerJevRule {
-	readonly id: string;
-	readonly target: MartinFowlerJevTarget;
-	readonly question: string;
-	readonly cutoff: number;
-	readonly location?: { readonly question: string; readonly cutoff: number };
-	readonly message: string;
-}
+/** A jev rule whose `message` names the smell and the refactoring, so it is required here. */
+export type MartinFowlerJevRule = JevRule & { readonly message: string };
+
+/** The oxlint plugin name `./jev-plugin.ts` registers; each rule is configured as `<name>/<id>`. */
+export const martinFowlerJevPluginName = "anti-slop-martinfowler-jev";
 
 /** Plugin-level options sized for these rules: whole-file rules and several function rules. */
 export const martinFowlerJevOptions = {

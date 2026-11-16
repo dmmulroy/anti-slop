@@ -140,11 +140,50 @@ This repository lints itself the same way in `oxlint.config.ts`.
 
 ### Optional LLM-judged Effect rules (Jev)
 
-`src/jev/` ships plain-English Effect review rules for [`oxlint-plugin-jev`](https://github.com/wobsoriano/oxlint-plugin-jev) (`effectSourceJevRules`, `effectTestJevRules`) and `jev/lint-changed.ts`, which runs oxlint on staged, unstaged, and untracked files only (`--all` for everything). Every match is a paid request, so keep `jev/ask` in an overlay config, never the editor config. See [docs/jev.md](docs/jev.md).
+`src/jev/` ships plain-English Effect review questions (`effectSourceJevRules`, `effectTestJevRules`) and `jev/plugin.ts`, an oxlint plugin named `anti-slop-effect-jev` with one rule per question, built with `createJevPlugin` from [Kyle Mistele's fork of `oxlint-plugin-jev`](https://github.com/K-Mistele/oxlint-plugin-jev). Each question's severity is set in the oxlint config, and all of a plugin's enabled rules share one request per file to [TypeSafe Jev](https://typesafe.ai) or, in judge mode, any AI SDK model. The fork is not on npm: this repository includes it as the `vendor/oxlint-plugin-jev` submodule, and the install skill vendors its built package to `tools/oxlint/oxlint-plugin-jev/` for a `file:` dependency:
+
+```sh
+node <skill-directory>/scripts/install.mjs --jev   # also copies the built fork
+npm install --save-dev ./tools/oxlint/oxlint-plugin-jev   # installs ai, @ai-sdk/typesafe-ai, zod, synckit
+export TYPESAFE_API_KEY="..."   # or AI_GATEWAY_API_KEY
+```
+
+Register the plugin in the base config without enabling its rules, and enable them in an overlay that `check:fast` and `check:full` run, never in the editor config:
+
+```ts
+// oxlint.config.ts
+jsPlugins: [{ name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" }],
+
+// oxlint.jev.config.ts: { ...base, rules, overrides }
+rules: {
+  ...base.rules,
+  "anti-slop-effect-jev/error-as-value": "error",
+  "anti-slop-effect-jev/shallow-service": "error",
+  "anti-slop-effect-jev/read-then-write-race": "warn",
+  // ...one entry per question; "off" sends nothing
+},
+overrides: [
+  {
+    files: ["**/*.test.*", "**/*.spec.*", "test/**", "tests/**"],
+    rules: { "anti-slop-effect-jev/error-as-value": "off", /* ... */ "anti-slop-effect-jev/test-cannot-fail": "error" },
+  },
+],
+```
+
+`jev/lint-changed.ts` runs oxlint on staged, unstaged, and untracked files and sets `JEV_CHANGED_ONLY=1`, so jev only asks about changed functions (`--all` lints everything with it off). See [docs/jev.md](docs/jev.md) for the full overlay, judge mode, and combining both jev plugins into one request per file.
 
 ### Optional Martin Fowler smell rules
 
-`martinfowler/index.ts` registers `anti-slop-martinfowler`: warn-level rules named after the code smells in *Refactoring* (2nd ed., ch. 3) whose messages name the refactoring to apply (`mysterious-name`, `long-function`, `long-parameter-list`, `global-data`, `mutable-data`, `repeated-switches`, `loops`, and `message-chains`, which is off by default). Some overlap other anti-slop rules on purpose so the bundle stands alone. `martinfowler/jev-rules.ts` is a matching `jev/suggest` preset for smells that need judgement; it needs the `message` field and `jev/suggest` rule from the `K-Mistele/oxlint-plugin-jev` fork. See [docs/martinfowler.md](docs/martinfowler.md).
+`martinfowler/index.ts` registers `anti-slop-martinfowler`: warn-level rules named after the code smells in *Refactoring* (2nd ed., ch. 3) whose messages name the refactoring to apply (`mysterious-name`, `long-function`, `long-parameter-list`, `global-data`, `mutable-data`, `repeated-switches`, `loops`, and `message-chains`, which is off by default). Some overlap other anti-slop rules on purpose so the bundle stands alone. `martinfowler/jev-rules.ts` is a matching jev preset for 12 smells that need judgement, and `martinfowler/jev-plugin.ts` turns it into the plugin `anti-slop-martinfowler-jev`, one rule per smell, meant for `"warn"` in the jev overlay. Each message reads "Possibly <Smell>: … Consider <Refactoring>." It needs the same jev fork. See [docs/martinfowler.md](docs/martinfowler.md).
+
+```ts
+// oxlint.jev.config.ts, next to the Effect jev rules
+"anti-slop-martinfowler-jev/feature-envy": "warn",
+"anti-slop-martinfowler-jev/mysterious-name": "warn",
+"anti-slop-martinfowler-jev/comments": "off",
+```
+
+Each jev plugin sends its own request per file, so enabling both costs up to two requests per file.
 
 ```ts
 jsPlugins: [{ name: "anti-slop-martinfowler", specifier: "./tools/oxlint/anti-slop/martinfowler/index.ts" }],
@@ -631,11 +670,13 @@ const userId = value as UserId;
 ## Development
 
 ```bash
+git submodule update --init
 pnpm install
+pnpm build:jev
 pnpm check
 ```
 
-`src/` is canonical. After changing production source, run `pnpm sync:skill-assets`; CI checks that the skill's bundled copy remains identical. `pnpm check` runs Oxlint, every RuleTester suite, TypeScript typechecking, and the skill-asset drift check.
+`src/` is canonical. `vendor/oxlint-plugin-jev` is a submodule of the jev fork, pinned to commit `af40809` (fork PR #2); move it to the fork's `main` once its PRs merge, then run `pnpm build:jev` and `pnpm sync:skill-assets`. After changing production source, run `pnpm sync:skill-assets`; CI checks that the skill's bundled copies of `src/` and of the built fork remain identical. `pnpm check` runs Oxlint, every RuleTester suite, TypeScript typechecking, and the skill-asset drift check.
 
 ## License
 

@@ -30,6 +30,9 @@ importers:
       oxlint:
         specifier: 1.86.0
         version: 1.86.0(oxlint-tsgolint@7.0.2003)
+      oxlint-plugin-jev:
+        specifier: file:vendor/oxlint-plugin-jev
+        version: file:vendor/oxlint-plugin-jev(oxlint@1.86.0(oxlint-tsgolint@7.0.2003))
       oxlint-tsgolint:
         specifier: 7.0.2003
         version: 7.0.2003
@@ -424,6 +427,10 @@ packages:
     resolution: {integrity: sha512-JeAiaaRMyUiUEQHQ7zBsJn1aEdbLyt1HJsOs4XKIIlATNxcvWRrRxneZA+RF4G03cQobq3IhTqSfyLhOFv03qA==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
 
+  '@pkgr/core@0.3.6':
+    resolution: {integrity: sha512-SEeaJLb3qBNF/OaXnaR1NmmBbFYk1zC0ZH/52fATcRPLFg/p791YrcyFFy44Bo9sLaGuSuLp5Q6axbb/O+v/RA==}
+    engines: {node: ^14.18.0 || >=16.0.0}
+
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
@@ -580,6 +587,12 @@ packages:
   json-schema@0.4.0:
     resolution: {integrity: sha512-es94M3nTIfsEPisRafak+HDLfHXnKBhV3vU5eqPcS3flIWqcxJWgXHXiey3YrpaNsanY5ei1VoYEbOzijuq9BA==}
 
+  oxlint-plugin-jev@file:vendor/oxlint-plugin-jev:
+    resolution: {directory: vendor/oxlint-plugin-jev, type: directory}
+    engines: {node: '>= 22'}
+    peerDependencies:
+      oxlint: '>=1.83.0'
+
   oxlint-tsgolint@7.0.2003:
     resolution: {integrity: sha512-VnK4zlqgmgq/7ZcjzCk/WpN8kKFsYGcB85Io9qT3wL4K8Un3RKmJkp793crNETieMusPMKOA4a+Mw2wbteI6TQ==}
     hasBin: true
@@ -596,6 +609,10 @@ packages:
         optional: true
       vite-plus:
         optional: true
+
+  synckit@0.11.13:
+    resolution: {integrity: sha512-eNRKgb3z66Yp3D2CixVujOUvXLFUTij/zVnV8KRyvFdQwpz7I5DS8UfRkTeLzb64u+dkzDSdelE24izu+zSSUg==}
+    engines: {node: ^14.18.0 || >=16.0.0}
 
   tsx@4.23.12:
     resolution: {integrity: sha512-FDf4L4sYzKtzWYhU/Xm0AQFdTjdIxNo9ElTf2mxXM6k8YMHXzYUe4yODVaXP4V9uMFbVg8c0qyBccK2OOxb45Q==}
@@ -832,6 +849,8 @@ snapshots:
 
   '@oxlint/plugins@1.86.0': {}
 
+  '@pkgr/core@0.3.6': {}
+
   '@standard-schema/spec@1.1.0': {}
 
   '@types/node@26.2.0':
@@ -945,6 +964,14 @@ snapshots:
 
   json-schema@0.4.0: {}
 
+  oxlint-plugin-jev@file:vendor/oxlint-plugin-jev(oxlint@1.86.0(oxlint-tsgolint@7.0.2003)):
+    dependencies:
+      '@ai-sdk/typesafe-ai': 3.0.40(zod@4.6.7)
+      ai: 7.0.173(zod@4.6.7)
+      oxlint: 1.86.0(oxlint-tsgolint@7.0.2003)
+      synckit: 0.11.13
+      zod: 4.6.7
+
   oxlint-tsgolint@7.0.2003:
     optionalDependencies:
       '@oxlint-tsgolint/darwin-arm64': 7.0.2003
@@ -976,6 +1003,10 @@ snapshots:
       '@oxlint/binding-win32-ia32-msvc': 1.86.0
       '@oxlint/binding-win32-x64-msvc': 1.86.0
       oxlint-tsgolint: 7.0.2003
+
+  synckit@0.11.13:
+    dependencies:
+      '@pkgr/core': 0.3.6
 
   tsx@4.23.12:
     dependencies:

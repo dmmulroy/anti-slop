@@ -1,0 +1,4 @@
+[submodule "vendor/oxlint-plugin-jev"]
+	path = vendor/oxlint-plugin-jev
+	url = https://github.com/K-Mistele/oxlint-plugin-jev.git
+	branch = kyle/ai-sdk-rule-per-question

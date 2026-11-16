@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
@@ -21,4 +23,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Builds the oxlint-plugin-jev submodule and reinstalls, so node_modules gets its dist/.
+      - run: pnpm build:jev
       - run: pnpm check
