@@ -64,53 +64,104 @@ the machine unless the backend runs locally.
 
 ## Backends
 
-All backends answer every enabled rule in one request per chunk.
+All backends answer every enabled rule in one request per chunk. The `decision-model` and
+`llm-judge` backends call models through the [Vercel AI SDK](https://ai-sdk.dev); the `command`
+backend runs a CLI.
+
+### Dependencies
+
+`run.ts` and the `command` backend need only Node. The AI SDK backends load their packages from the
+consumer's `node_modules` when they run, so install only what the backend you use needs (versions
+this repository tests with):
+
+| Backend and target | Install |
+| --- | --- |
+| `decision-model`, TypeSafe directly | `ai@7.0.173 zod@4.6.7 @ai-sdk/typesafe-ai@3.0.40` |
+| `decision-model` or `llm-judge` through AI Gateway | `ai@7.0.173 zod@4.6.7` (the gateway provider ships with `ai`) |
+| `llm-judge`, an OpenAI-compatible server | `ai@7.0.173 zod@4.6.7 @ai-sdk/openai-compatible@3.0.92` |
+| `command` | Nothing |
+
+```sh
+npm install --save-dev ai@7.0.173 zod@4.6.7 @ai-sdk/typesafe-ai@3.0.40 @ai-sdk/openai-compatible@3.0.92
+```
+
+`zod` is a peer dependency of `ai`; npm 7+ and pnpm install it automatically, but listing it keeps
+the version explicit. When a package is missing, the backend fails like any other backend error
+(one warning, exit 0 unless `--fail` or `ci: "fail"`), naming the packages to install, for example
+`the decision-model backend needs ai zod @ai-sdk/typesafe-ai; install them with ...`. Type
+stripping erases the `import type` from `ai`, so the command backend runs without the AI SDK
+installed; a typecheck that includes the vendored folder does need it.
 
 ### `decision-model` (TypeSafe Jev)
 
 ```sh
-export TYPESAFE_API_KEY="..."
+export TYPESAFE_API_KEY="..."           # or TYPESAFE_AI_API_KEY, the AI SDK provider's name
 # Optional:
-export TYPESAFE_BASE_URL="https://api.typesafe.ai"
+export TYPESAFE_AI_BASE_URL="https://api.typesafe.ai/v1"   # or the legacy TYPESAFE_BASE_URL="https://api.typesafe.ai"
 export TYPESAFE_DEFAULT_MODEL="jev-latest"
 ```
 
-The runner calls `POST {TYPESAFE_BASE_URL}/v1/systemone` with built-in `fetch`, in the same wire
-format as `@typesafe-ai/sdk` 0.7.0's `client.systemOne`:
-
-```json
-{
-  "state": "<change set text>",
-  "questions": { "r0": { "type": "noul", "instructions": "<rule question>" } },
-  "model": "jev-latest"
-}
-```
-
-Headers are `Authorization: Bearer <key>`, `Accept: application/json`, and
-`Content-Type: application/json`; bodies of 1 KiB or more are zstd-compressed with
-`Content-Encoding: zstd`, as the SDK does. Like the SDK, it retries 408, 429, 5xx, and connection
-errors twice, honoring `retry-after-ms` and `Retry-After`. The response's `answers.rN.noul` is the
-probability of yes, and `model` is the version that answered, which the report prints. The
+The runner calls `experimental_decide` from `ai` with `createTypeSafeAi({ apiKey, baseURL })
+.decisionModel(model)` from `@ai-sdk/typesafe-ai`. Every rule is a `boolean` question
+(`{ type: "boolean", instructions: <rule question> }`) against the change set as `state`, and the
+provider sends one `POST {baseURL}/systemone` with the questions as TypeSafe `noul` questions.
+`TYPESAFE_AI_BASE_URL` includes `/v1`; a legacy `TYPESAFE_BASE_URL` host gets `/v1` appended. The
+answer's `probability` is the probability of yes, and `result.response.modelId` is the version that
+answered (the requested id when TypeSafe does not report one), which the report prints. The
 decision model gives a probability only, without evidence or file lists.
 
-### `llm-judge` (OpenAI-compatible chat completions)
+Without a TypeSafe key, `AI_GATEWAY_API_KEY` (or a Vercel deployment's `VERCEL_OIDC_TOKEN`) sends
+the same questions through AI Gateway (`POST {gateway}/decision-model`) with the model
+`typesafe-ai/jev`. A `--model` or config `model` containing `/` is used as the gateway id; a bare
+id such as `jev-1.13.0` becomes `typesafe-ai/jev-1.13.0`. `AI_GATEWAY_BASE_URL` overrides the
+gateway URL. A TypeSafe key wins when both are set.
+
+Limits: Jev accepts 64k tokens per request (state plus all questions) and 32k per question by
+default. The default `maxChunkChars` of 60,000 stays well inside both. Set `longContext: true` in the
+config to send TypeSafe's long-context option (`providerOptions.typesafe.longContext`, header
+`TypeSafe-Danger-Zone-Long-Context: true`), raising both limits to 262k tokens; TypeSafe describes
+it as slower and less accurate, so raise `maxChunkChars` with it only when needed.
+
+### `llm-judge` (chat model with structured output)
 
 ```sh
-export LLM_JUDGE_BASE_URL="https://api.openai.com/v1"   # or any compatible server
+# AI Gateway: any provider/model id from the gateway catalog.
+export AI_GATEWAY_API_KEY="..."
+export LLM_JUDGE_MODEL="openai/gpt-5-mini"
+
+# Or an OpenAI-compatible server (OpenAI, a proxy, vLLM, Ollama, LM Studio, ...).
+export LLM_JUDGE_BASE_URL="https://api.openai.com/v1"
 export LLM_JUDGE_MODEL="gpt-5-mini"
-export LLM_JUDGE_API_KEY="..."                           # omit for local servers
+export LLM_JUDGE_API_KEY="..."                  # omit for local servers
+export LLM_JUDGE_STRUCTURED_OUTPUTS="false"     # optional: for servers without json_schema support
 ```
 
-The runner posts to `{LLM_JUDGE_BASE_URL}/chat/completions` with `temperature: 0` and
-`response_format: { "type": "json_object" }`, asking for exactly:
+The runner calls `generateText` from `ai` with `output: Output.object({ schema, name: "diff_rules" })`
+(the AI SDK 7 replacement for the deprecated `generateObject`), `temperature: 0`, and up to two
+retries. With `LLM_JUDGE_BASE_URL` set, the model is `createOpenAICompatible({ baseURL, apiKey,
+supportsStructuredOutputs }).chatModel(model)` from `@ai-sdk/openai-compatible`, which posts to
+`{LLM_JUDGE_BASE_URL}/chat/completions` with `response_format: { type: "json_schema", json_schema:
+{ name: "diff_rules", strict: true, schema } }`, or `{ type: "json_object" }` when
+`LLM_JUDGE_STRUCTURED_OUTPUTS` is `false` (the AI SDK then logs that the schema is not sent).
+Otherwise the model id goes to AI Gateway. Both paths ask for exactly:
 
 ```json
 { "rules": [{ "id": "shotgun-surgery", "violation": true, "confidence": 0.9, "evidence": "...", "files": ["src/a.ts"] }] }
 ```
 
-The reply must answer every rule with a boolean `violation` and a `confidence` from 0 to 1; prose or
-code fences around the object are tolerated, anything else is an error. The probability of yes is
-`confidence` when `violation` is true and `1 - confidence` otherwise, compared with the cutoff.
+The schema requires every field (strict mode); the runner then checks that every rule is answered
+with a boolean `violation` and a `confidence` from 0 to 1. A reply that is not JSON, or misses a
+rule, is an error. The probability of yes is `confidence` when `violation` is true and
+`1 - confidence` otherwise, compared with the cutoff. Direct `@ai-sdk/openai` or
+`@ai-sdk/anthropic` providers are not wired in: AI Gateway covers those models with one key, and
+OpenAI's API works through `LLM_JUDGE_BASE_URL`.
+
+### Retries and timeouts
+
+Both AI SDK backends pass `maxRetries: 2`: the AI SDK retries 408, 409, 429, 5xx, and connection
+errors with exponential backoff from 2 seconds, honoring `retry-after-ms` and `Retry-After` up to 60
+seconds. `timeoutMs` aborts the whole call, retries included. Errors are reported as
+`http <status>: <provider message>`, with `(after 3 attempts)` when retries ran out.
 
 ### `command` (any CLI judge)
 
@@ -120,24 +171,26 @@ node tools/oxlint/anti-slop/diff-rules/run.ts --backend command --command 'droid
 ```
 
 The command runs through the shell with the prompt on stdin and must print the same JSON object as
-the LLM judge on stdout. A `{ "result": "<reply text>" }` wrapper, as printed by
-`claude -p --output-format json`, is unwrapped. Set the command with `--command`,
-`ANTI_SLOP_DIFF_RULES_COMMAND`, or `command` in the config. A non-zero exit is a backend error.
-Use a read-only mode of the agent: the prompt contains the diff, and the judge needs no tools.
+the LLM judge on stdout; prose or code fences around the object are tolerated. A
+`{ "result": "<reply text>" }` wrapper, as printed by `claude -p --output-format json`, is
+unwrapped. Set the command with `--command`, `ANTI_SLOP_DIFF_RULES_COMMAND`, or `command` in the
+config. A non-zero exit is a backend error. Use a read-only mode of the agent: the prompt contains
+the diff, and the judge needs no tools.
 
 ### Choosing a backend
 
-`--backend` wins, then `backend` in the config, then the first backend with credentials:
-`TYPESAFE_API_KEY`, then `LLM_JUDGE_BASE_URL`, then a configured command. The model is `--model`,
-then `TYPESAFE_DEFAULT_MODEL` or `LLM_JUDGE_MODEL`, then `model` in the config, then `jev-latest`
-for the decision model.
+`--backend` wins, then `backend` in the config, then the first backend with credentials: a TypeSafe
+key (`decision-model`), then `LLM_JUDGE_BASE_URL` (`llm-judge`), then an AI Gateway credential
+(`llm-judge` when `LLM_JUDGE_MODEL` is set, otherwise `decision-model`), then a configured command.
+The model is `--model`, then `TYPESAFE_DEFAULT_MODEL` or `LLM_JUDGE_MODEL`, then `model` in the
+config, then `jev-latest` (TypeSafe) or `typesafe-ai/jev` (gateway) for the decision model.
 
 ### Missing credentials and backend errors
 
-As with Jev, a missing key or an unreachable, failing, or malformed backend prints one warning and
-exits 0, so a laptop without credentials is not blocked. Pass `--fail`, or set `ci: "fail"` in the
-config and run with `CI` set, to exit 2 instead. Failed answers are never cached.
-
+As with Jev, a missing key or package, or an unreachable, failing, or malformed backend prints one
+warning and exits 0, so a laptop without credentials is not blocked. Pass `--fail`, or set
+`ci: "fail"` in the config and run with `CI` set, to exit 2 instead. Failed answers are never
+cached.
 ## Configuration
 
 `run.ts` loads `--config <path>`, or the first of `anti-slop-diff-rules.config.ts`, `.mjs`, `.js`,
@@ -169,6 +222,7 @@ export default {
   coChangeCommits: 200,
   timeoutMs: 120000,
   concurrency: 4,
+  longContext: false, // decision model only: Jev's 262k-token mode
 };
 ```
 
@@ -196,8 +250,8 @@ including rules that did not fire, the base, the answering models, and errors.
 
 ## Consumer scripts
 
-The vendored entry point is `tools/oxlint/anti-slop/diff-rules/run.ts`. It uses only Node built-ins
-and erasable type syntax, so `node` runs it directly with built-in type stripping (Node 22.18 or
+The vendored entry point is `tools/oxlint/anti-slop/diff-rules/run.ts`. It uses erasable type
+syntax, and the AI SDK only inside the backends that need it (see [Dependencies](#dependencies)), so `node` runs it directly with built-in type stripping (Node 22.18 or
 later; tested on Node 24). Node refuses to strip types under `node_modules`, so keep the vendored
 copy outside it.
 

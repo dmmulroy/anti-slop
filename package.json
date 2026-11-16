@@ -21,12 +21,16 @@
     "@oxlint/plugins": "1.86.0"
   },
   "devDependencies": {
+    "@ai-sdk/openai-compatible": "3.0.92",
+    "@ai-sdk/typesafe-ai": "3.0.40",
     "@effect/tsgo": "0.48.0",
     "@types/node": "26.2.0",
+    "ai": "7.0.173",
     "oxlint": "1.86.0",
     "oxlint-tsgolint": "7.0.2003",
     "tsx": "4.23.12",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "zod": "4.6.7"
   },
   "packageManager": "pnpm@10.33.0",
   "license": "MIT"

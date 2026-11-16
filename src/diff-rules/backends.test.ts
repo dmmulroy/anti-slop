@@ -1,12 +1,13 @@
 // oxlint-disable effecttsgo/node-builtin-import, effecttsgo/global-console, effecttsgo/async-function, effecttsgo/prefer-schema-over-json, effecttsgo/new-promise
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingHttpHeaders } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { zstdDecompressSync } from "node:zlib";
-import { chooseBackend, commandBackend, decisionModelBackend, llmJudgeBackend } from "./backends.ts";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chooseBackend, commandBackend, decisionModelBackend, judgeReplySchema, llmJudgeBackend } from "./backends.ts";
 import { resolveConfig } from "./config.ts";
 import type { JudgeInput } from "./input.ts";
 import type { DiffRule } from "./rules.ts";
@@ -36,9 +37,12 @@ async function mockServer(replies: Reply[]): Promise<{ url: string; requests: Ca
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
-      const raw = Buffer.concat(chunks);
-      const text = request.headers["content-encoding"] === "zstd" ? zstdDecompressSync(raw).toString("utf8") : raw.toString("utf8");
-      requests.push({ method: request.method ?? "", url: request.url ?? "", headers: request.headers, body: JSON.parse(text) });
+      requests.push({
+        method: request.method ?? "",
+        url: request.url ?? "",
+        headers: request.headers,
+        body: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+      });
       const reply = replies[Math.min(requests.length - 1, replies.length - 1)] ?? { status: 500, body: "no reply" };
       response.writeHead(reply.status ?? 200, { "content-type": "application/json", ...reply.headers });
       response.end(typeof reply.body === "string" ? reply.body : JSON.stringify(reply.body));
@@ -53,6 +57,15 @@ async function mockServer(replies: Reply[]): Promise<{ url: string; requests: Ca
   };
 }
 
+async function withServer(replies: Reply[], run: (server: Awaited<ReturnType<typeof mockServer>>) => Promise<void>): Promise<void> {
+  const server = await mockServer(replies);
+  try {
+    await run(server);
+  } finally {
+    await server.close();
+  }
+}
+
 const rules: DiffRule[] = [
   { id: "shotgun-surgery", question: "Is it shotgun surgery?", message: "m", cutoff: 0.7, severity: "warn" },
   { id: "scope-creep", question: "Is it scope creep?", message: "m", cutoff: 0.7, severity: "warn" },
@@ -60,98 +73,133 @@ const rules: DiffRule[] = [
 
 const input = (text: string): JudgeInput => ({ text, hash: "h", index: 0, total: 1, files: ["a.ts"] });
 
-const systemOneRequestFor = (state: string): unknown => ({
-  state,
-  questions: {
-    r0: { type: "noul", instructions: "Is it shotgun surgery?" },
-    r1: { type: "noul", instructions: "Is it scope creep?" },
-  },
-  model: "jev-latest",
+// --- Decision model, direct: what @ai-sdk/typesafe-ai sends to POST {baseURL}/systemone ---
+
+const typesafe = (url: string, extra: { longContext?: boolean } = {}) =>
+  decisionModelBackend({ target: { kind: "typesafe", apiKey: "sk-test", baseURL: `${url}/v1/` }, model: "jev-latest", timeoutMs: 10_000, ...extra });
+
+const systemOneReply = (r0: unknown, r1: unknown, model: string | null = "jev-1.14.0"): Reply => ({
+  body: { ...(model === null ? {} : { model }), answers: { r0, r1 }, usage: { input_tokens: 10, output_tokens: 1 } },
 });
 
-const systemOneReply = (r0: unknown, r1: unknown, model = "jev-2025-06-01"): Reply => ({
-  body: { model, answers: { r0, r1 }, usage: { input_tokens: 10, output_tokens: 1 } },
-});
-
-test("decision model: sends the SDK's systemOne wire format and reads noul probabilities", async () => {
-  const server = await mockServer([systemOneReply({ type: "noul", noul: 0.91 }, { type: "noul", noul: 0.05 })]);
-  try {
-    const backend = decisionModelBackend({ apiKey: "sk-test", baseURL: `${server.url}/`, model: "jev-latest", timeoutMs: 5000 });
-    const answers = await backend.ask(rules, input("small diff"));
+test("decision model: sends TypeSafe's systemOne request through experimental_decide and reads noul probabilities", async () => {
+  await withServer([systemOneReply({ type: "noul", noul: 0.91 }, { type: "noul", noul: 0.05 })], async (server) => {
+    const answers = await typesafe(server.url).ask(rules, input("small diff"));
     assert.deepEqual(answers, [
-      { id: "shotgun-surgery", probability: 0.91, model: "jev-2025-06-01" },
-      { id: "scope-creep", probability: 0.05, model: "jev-2025-06-01" },
+      { id: "shotgun-surgery", probability: 0.91, model: "jev-1.14.0" },
+      { id: "scope-creep", probability: 0.05, model: "jev-1.14.0" },
     ]);
     const [request] = server.requests;
+    assert.equal(server.requests.length, 1);
     assert.equal(request?.method, "POST");
     assert.equal(request?.url, "/v1/systemone");
     assert.equal(request?.headers.authorization, "Bearer sk-test");
     assert.equal(request?.headers["content-type"], "application/json");
-    assert.equal(request?.headers.accept, "application/json");
-    assert.equal(request?.headers["content-encoding"], undefined);
+    assert.equal(request?.headers["typesafe-danger-zone-long-context"], undefined);
+    assert.match(String(request?.headers["user-agent"]), /\bai\/7\.0\.173\b/);
     assert.deepEqual(request?.body, {
+      model: "jev-latest",
       state: "small diff",
       questions: {
         r0: { type: "noul", instructions: "Is it shotgun surgery?" },
         r1: { type: "noul", instructions: "Is it scope creep?" },
       },
-      model: "jev-latest",
     });
-  } finally {
-    await server.close();
-  }
+  });
 });
 
-test("decision model: compresses bodies of 1 KiB or more with zstd, as the SDK does", async () => {
-  const server = await mockServer([systemOneReply({ noul: 0.2 }, { noul: 0.3 })]);
-  try {
-    const backend = decisionModelBackend({ apiKey: "k", baseURL: server.url, model: "jev-latest", timeoutMs: 5000 });
-    await backend.ask(rules, input("x".repeat(4000)));
-    assert.equal(server.requests[0]?.headers["content-encoding"], "zstd");
-    assert.deepEqual(server.requests[0]?.body, systemOneRequestFor("x".repeat(4000)));
-  } finally {
-    await server.close();
-  }
+test("decision model: longContext sends TypeSafe's long-context header", async () => {
+  await withServer([systemOneReply({ type: "noul", noul: 0.2 }, { type: "noul", noul: 0.3 })], async (server) => {
+    await typesafe(server.url, { longContext: true }).ask(rules, input("d"));
+    assert.equal(server.requests[0]?.headers["typesafe-danger-zone-long-context"], "true");
+  });
+});
+
+test("decision model: reports the requested model when the response names none", async () => {
+  await withServer([systemOneReply({ type: "noul", noul: 0.2 }, { type: "noul", noul: 0.3 }, null)], async (server) => {
+    const answers = await typesafe(server.url).ask(rules, input("d"));
+    assert.equal(answers[0]?.model, "jev-latest");
+  });
 });
 
 test("decision model: rejects malformed responses", async () => {
   const cases: Array<[Reply, RegExp]> = [
-    [{ body: { answers: { r0: { noul: 0.1 }, r1: { noul: 0.1 } } } }, /no model/],
-    [{ body: { model: "m" } }, /no answers object/],
-    [systemOneReply({ noul: 0.1 }, undefined), /no probability in \[0, 1\] for "scope-creep"/],
-    [systemOneReply({ noul: 1.5 }, { noul: 0.1 }), /no probability in \[0, 1\] for "shotgun-surgery"/],
-    [{ body: "<html>oops</html>" }, /not JSON/],
-    [{ status: 401, body: { error: { message: "invalid api key" } } }, /http 401: invalid api key/],
+    [{ body: { model: "m" } }, /Invalid JSON response/],
+    [systemOneReply({ type: "noul", noul: 0.1 }, undefined), /exactly one answer for every question/],
+    [systemOneReply({ type: "noul", noul: 1.5 }, { type: "noul", noul: 0.1 }), /Question "r0" must return P\(true\) as a finite probability in \[0, 1\]/],
+    [systemOneReply({ type: "noul", noul: "high" }, { type: "noul", noul: 0.1 }), /Invalid JSON response/],
+    [{ body: "<html>oops</html>" }, /Invalid JSON response/],
+    [{ status: 401, body: { error: { message: "invalid api key" } } }, /^Error: http 401: invalid api key$/],
   ];
   for (const [reply, expected] of cases) {
-    const server = await mockServer([reply]);
-    try {
-      const backend = decisionModelBackend({ apiKey: "k", baseURL: server.url, model: "jev-latest", timeoutMs: 5000 });
-      await assert.rejects(backend.ask(rules, input("d")), expected);
-    } finally {
-      await server.close();
-    }
+    await withServer([reply], async (server) => {
+      await assert.rejects(typesafe(server.url).ask(rules, input("d")), expected);
+      assert.equal(server.requests.length, 1, `no retry for ${JSON.stringify(reply.body)}`);
+    });
   }
 });
 
-test("decision model: retries 5xx and 429 with the retry count header", async () => {
-  const server = await mockServer([
-    { status: 503, headers: { "retry-after-ms": "0" }, body: { error: "busy" } },
-    { status: 429, headers: { "retry-after-ms": "0" }, body: { error: "slow down" } },
-    systemOneReply({ noul: 0.8 }, { noul: 0.1 }),
-  ]);
-  try {
-    const backend = decisionModelBackend({ apiKey: "k", baseURL: server.url, model: "jev-latest", timeoutMs: 5000 });
-    const answers = await backend.ask(rules, input("d"));
-    assert.equal(answers[0]?.probability, 0.8);
-    assert.deepEqual(server.requests.map((request) => request.headers["x-typesafe-retry-count"]), [undefined, "1", "2"]);
-  } finally {
-    await server.close();
-  }
+test("decision model: the AI SDK retries 5xx and 429, honoring retry-after-ms", async () => {
+  await withServer(
+    [
+      { status: 503, headers: { "retry-after-ms": "0" }, body: { error: "busy" } },
+      { status: 429, headers: { "retry-after-ms": "0" }, body: { error: "slow down" } },
+      systemOneReply({ type: "noul", noul: 0.8 }, { type: "noul", noul: 0.1 }),
+    ],
+    async (server) => {
+      const answers = await typesafe(server.url).ask(rules, input("d"));
+      assert.equal(answers[0]?.probability, 0.8);
+      assert.equal(server.requests.length, 3);
+    },
+  );
+  await withServer([{ status: 503, headers: { "retry-after-ms": "0" }, body: { error: "busy" } }], async (server) => {
+    await assert.rejects(typesafe(server.url).ask(rules, input("d")), /^Error: http 503: busy \(after 3 attempts\)$/);
+    assert.equal(server.requests.length, 3);
+  });
 });
 
-const judgeReply = (content: string, model = "gpt-test-2025"): Reply => ({
-  body: { id: "c", model, choices: [{ index: 0, message: { role: "assistant", content } }] },
+// --- Decision model through AI Gateway: what @ai-sdk/gateway sends to POST {baseURL}/decision-model ---
+
+test("decision model: the gateway target posts the SDK's neutral questions with the gateway model id", async () => {
+  const reply: Reply = {
+    body: {
+      model: "typesafe-ai/jev-1.14.0",
+      answers: { r0: { type: "boolean", probability: 0.66 }, r1: { type: "boolean", probability: 0.1 } },
+    },
+  };
+  await withServer([reply], async (server) => {
+    const backend = decisionModelBackend({ target: { kind: "gateway", apiKey: "gw-key", baseURL: server.url }, model: "typesafe-ai/jev", timeoutMs: 10_000 });
+    const answers = await backend.ask(rules, input("gateway diff"));
+    assert.deepEqual(answers.map((answer) => [answer.probability, answer.model]), [
+      [0.66, "typesafe-ai/jev-1.14.0"],
+      [0.1, "typesafe-ai/jev-1.14.0"],
+    ]);
+    const [request] = server.requests;
+    assert.equal(request?.url, "/decision-model");
+    assert.equal(request?.headers.authorization, "Bearer gw-key");
+    assert.equal(request?.headers["ai-model-id"], "typesafe-ai/jev");
+    assert.deepEqual(request?.body, {
+      providerOptions: {},
+      stateParts: [{ type: "text", text: "gateway diff" }],
+      questions: {
+        r0: { type: "boolean", instructions: "Is it shotgun surgery?" },
+        r1: { type: "boolean", instructions: "Is it scope creep?" },
+      },
+    });
+  });
+});
+
+// --- LLM judge: generateText with Output.object ---
+
+const chatReply = (content: string, model = "gpt-test-2025"): Reply => ({
+  body: {
+    id: "c",
+    object: "chat.completion",
+    created: 1,
+    model,
+    choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  },
 });
 
 const verdicts = JSON.stringify({
@@ -161,11 +209,16 @@ const verdicts = JSON.stringify({
   ],
 });
 
-test("llm judge: posts an OpenAI-compatible chat completion and converts confidence", async () => {
-  const server = await mockServer([judgeReply(`Here you go:\n\`\`\`json\n${verdicts}\n\`\`\``)]);
-  try {
-    const backend = llmJudgeBackend({ baseURL: `${server.url}/v1`, apiKey: "sk-judge", model: "judge-model", timeoutMs: 5000 });
-    const answers = await backend.ask(rules, input("the diff text"));
+const compatible = (url: string, extra: { apiKey?: string; structuredOutputs?: boolean } = {}) =>
+  llmJudgeBackend({
+    target: { kind: "openai-compatible", baseURL: `${url}/v1`, structuredOutputs: extra.structuredOutputs ?? true, ...(extra.apiKey === undefined ? {} : { apiKey: extra.apiKey }) },
+    model: "judge-model",
+    timeoutMs: 10_000,
+  });
+
+test("llm judge: posts a chat completion with the reply's JSON schema and converts confidence", async () => {
+  await withServer([chatReply(verdicts)], async (server) => {
+    const answers = await compatible(server.url, { apiKey: "sk-judge" }).ask(rules, input("the diff text"));
     assert.equal(answers[0]?.probability, 0.9);
     assert.equal(answers[0]?.evidence, "Same flag added in 4 modules");
     assert.deepEqual(answers[0]?.files, ["a.ts", "b.ts"]);
@@ -175,38 +228,80 @@ test("llm judge: posts an OpenAI-compatible chat completion and converts confide
     const [request] = server.requests;
     assert.equal(request?.url, "/v1/chat/completions");
     assert.equal(request?.headers.authorization, "Bearer sk-judge");
-    const body = request?.body as { model: string; temperature: number; messages: Array<{ role: string; content: string }> };
+    const body = request?.body as {
+      model: string;
+      temperature: number;
+      response_format: unknown;
+      messages: Array<{ role: string; content: string }>;
+    };
     assert.equal(body.model, "judge-model");
     assert.equal(body.temperature, 0);
+    assert.deepEqual(body.response_format, {
+      type: "json_schema",
+      json_schema: { schema: judgeReplySchema(rules), strict: true, name: "diff_rules" },
+    });
+    assert.deepEqual(body.messages.map((message) => message.role), ["system", "user"]);
     const prompt = body.messages.at(-1)?.content ?? "";
     assert.ok(prompt.includes("- shotgun-surgery: Is it shotgun surgery?"));
     assert.ok(prompt.endsWith("the diff text"));
-  } finally {
-    await server.close();
-  }
+  });
+});
+
+test("llm judge: structuredOutputs false asks for a json_object only", async () => {
+  await withServer([chatReply(verdicts)], async (server) => {
+    await compatible(server.url, { structuredOutputs: false }).ask(rules, input("d"));
+    const body = server.requests[0]?.body as { response_format: unknown };
+    assert.deepEqual(body.response_format, { type: "json_object" });
+    assert.equal(server.requests[0]?.headers.authorization, undefined);
+  });
 });
 
 test("llm judge: rejects malformed replies", async () => {
   const cases: Array<[Reply, RegExp]> = [
-    [judgeReply("I think it is fine."), /no JSON object/],
-    [judgeReply(JSON.stringify({ rules: [{ id: "shotgun-surgery", violation: true, confidence: 0.9 }] })), /no answer for "scope-creep"/],
-    [judgeReply(JSON.stringify({ rules: [{ id: "shotgun-surgery", violation: "yes", confidence: 0.9 }, { id: "scope-creep", violation: false, confidence: 1 }] })), /no boolean violation/],
-    [judgeReply(JSON.stringify({ rules: [{ id: "shotgun-surgery", violation: true, confidence: 90 }, { id: "scope-creep", violation: false, confidence: 1 }] })), /no confidence in \[0, 1\]/],
-    [judgeReply(JSON.stringify({ rules: [{ id: "shotgun-surgery", violation: true, confidence: 0.9, files: "a.ts" }, { id: "scope-creep", violation: false, confidence: 1 }] })), /files that are not a list/],
-    [judgeReply(JSON.stringify({ verdicts: [] })), /no rules list/],
-    [{ body: { choices: [] } }, /no message content/],
+    [chatReply("I think it is fine."), /could not parse the response/],
+    [chatReply(JSON.stringify({ rules: [{ id: "shotgun-surgery", violation: true, confidence: 0.9 }] })), /no answer for "scope-creep"/],
+    [chatReply(JSON.stringify({ rules: [{ id: "shotgun-surgery", violation: "yes", confidence: 0.9 }, { id: "scope-creep", violation: false, confidence: 1 }] })), /no boolean violation/],
+    [chatReply(JSON.stringify({ rules: [{ id: "shotgun-surgery", violation: true, confidence: 90 }, { id: "scope-creep", violation: false, confidence: 1 }] })), /no confidence in \[0, 1\]/],
+    [chatReply(JSON.stringify({ rules: [{ id: "shotgun-surgery", violation: true, confidence: 0.9, files: "a.ts" }, { id: "scope-creep", violation: false, confidence: 1 }] })), /files that are not a list/],
+    [chatReply(JSON.stringify({ verdicts: [] })), /no rules list/],
+    [{ body: { id: "c", model: "m", choices: [] } }, /Response did not contain any choices/],
+    [{ status: 400, body: { error: { message: "bad model" } } }, /^Error: http 400: bad model$/],
   ];
   for (const [reply, expected] of cases) {
-    const server = await mockServer([reply]);
-    try {
-      const backend = llmJudgeBackend({ baseURL: server.url, model: "m", timeoutMs: 5000 });
-      await assert.rejects(backend.ask(rules, input("d")), expected);
-      assert.equal(server.requests[0]?.headers.authorization, undefined);
-    } finally {
-      await server.close();
-    }
+    await withServer([reply], async (server) => {
+      await assert.rejects(compatible(server.url).ask(rules, input("d")), expected);
+    });
   }
 });
+
+test("llm judge: the gateway target posts to the gateway's language-model endpoint", async () => {
+  const reply: Reply = {
+    body: {
+      content: [{ type: "text", text: verdicts }],
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: {
+        inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 5, text: 5, reasoning: 0 },
+      },
+      warnings: [],
+    },
+  };
+  await withServer([reply], async (server) => {
+    const backend = llmJudgeBackend({ target: { kind: "gateway", apiKey: "gw-key", baseURL: server.url }, model: "openai/gpt-5-mini", timeoutMs: 10_000 });
+    const answers = await backend.ask(rules, input("d"));
+    assert.equal(answers[0]?.probability, 0.9);
+    assert.equal(answers[0]?.model, "openai/gpt-5-mini");
+    const [request] = server.requests;
+    assert.equal(request?.url, "/language-model");
+    assert.equal(request?.headers.authorization, "Bearer gw-key");
+    assert.equal(request?.headers["ai-language-model-id"], "openai/gpt-5-mini");
+    const body = request?.body as { responseFormat: unknown; temperature: number };
+    assert.deepEqual(body.responseFormat, { type: "json", schema: judgeReplySchema(rules), name: "diff_rules" });
+    assert.equal(body.temperature, 0);
+  });
+});
+
+// --- Command backend ---
 
 test("command: pipes the prompt to the CLI and parses its stdout", async () => {
   const dir = mkdtempSync(join(tmpdir(), "diff-rules-cmd-"));
@@ -229,7 +324,7 @@ console.log("Thinking...\\n" + ${JSON.stringify(verdicts)});
       commandBackend({ command: `"${process.execPath}" "${stub}" ${mode}`, timeoutMs: 10_000 }).ask(rules, input("PROMPT-BODY"));
     const answers = await run("ok");
     assert.equal(answers[0]?.probability, 0.9);
-    assert.ok((await import("node:fs")).readFileSync(seen, "utf8").endsWith("PROMPT-BODY"));
+    assert.ok(readFileSync(seen, "utf8").endsWith("PROMPT-BODY"));
     assert.equal((await run("wrapped"))[0]?.probability, 0.9);
     await assert.rejects(run("fail"), /exited with 3: judge crashed/);
     await assert.rejects(run("garbage"), /no JSON object/);
@@ -238,16 +333,77 @@ console.log("Thinking...\\n" + ${JSON.stringify(verdicts)});
   }
 });
 
+test("vendored without the AI SDK: the command backend works and the SDK backends name the missing packages", async () => {
+  // A copy outside this repository resolves no node_modules, as in a consumer that skipped the AI SDK.
+  const dir = mkdtempSync(join(tmpdir(), "diff-rules-vendored-"));
+  try {
+    cpSync(dirname(fileURLToPath(import.meta.url)), join(dir, "diff-rules"), { recursive: true, filter: (path) => !path.endsWith(".test.ts") });
+    const script = join(dir, "probe.mjs");
+    const reply = join(dir, "reply.json");
+    writeFileSync(reply, verdicts);
+    writeFileSync(
+      script,
+      `import { commandBackend, decisionModelBackend, llmJudgeBackend } from "./diff-rules/backends.ts";
+const rules = ${JSON.stringify(rules)};
+const input = { text: "d", hash: "h", index: 0, total: 1, files: [] };
+const command = await commandBackend({ command: ${JSON.stringify(`cat "${reply}"`)}, timeoutMs: 10000 }).ask(rules, input);
+const errors = [];
+for (const backend of [
+  decisionModelBackend({ target: { kind: "typesafe", apiKey: "k", baseURL: "http://127.0.0.1:9" }, model: "jev-latest", timeoutMs: 1000 }),
+  llmJudgeBackend({ target: { kind: "gateway", apiKey: "k" }, model: "openai/x", timeoutMs: 1000 }),
+]) {
+  try { await backend.ask(rules, input); errors.push("no error"); } catch (error) { errors.push(error.message); }
+}
+console.log(JSON.stringify({ probability: command[0].probability, errors }));
+`,
+    );
+    const result = spawnSync(process.execPath, [script], { cwd: dir, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const out = JSON.parse(result.stdout) as { probability: number; errors: string[] };
+    assert.equal(out.probability, 0.9);
+    assert.deepEqual(out.errors, [
+      "the decision-model backend needs ai zod; install them with `npm install --save-dev ai zod`",
+      "the llm-judge backend needs ai zod; install them with `npm install --save-dev ai zod`",
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Choosing a backend ---
+
 test("chooseBackend: picks the first configured backend and explains missing credentials", async () => {
   const config = resolveConfig({});
   const none = chooseBackend(undefined, config, {}, {});
-  assert.deepEqual(none, { ok: false, name: "decision-model", reason: "TYPESAFE_API_KEY is not set" });
-  const jev = chooseBackend(undefined, config, { TYPESAFE_API_KEY: "k", TYPESAFE_DEFAULT_MODEL: "jev-2025-06-01" }, {});
-  assert.ok(jev.ok && jev.backend.name === "decision-model" && jev.backend.model === "jev-2025-06-01");
+  assert.deepEqual(none, { ok: false, name: "decision-model", reason: "TYPESAFE_API_KEY (or TYPESAFE_AI_API_KEY or AI_GATEWAY_API_KEY) is not set" });
+  const jev = chooseBackend(undefined, config, { TYPESAFE_API_KEY: "k", TYPESAFE_DEFAULT_MODEL: "jev-1.13.0" }, {});
+  assert.ok(jev.ok && jev.backend.name === "decision-model" && jev.backend.model === "jev-1.13.0");
+  assert.equal(jev.ok && jev.backend.identity, "decision-model typesafe https://api.typesafe.ai/v1");
+  const aiKey = chooseBackend(undefined, config, { TYPESAFE_AI_API_KEY: "k", TYPESAFE_AI_BASE_URL: "http://proxy/v1" }, {});
+  assert.equal(aiKey.ok && aiKey.backend.identity, "decision-model typesafe http://proxy/v1");
+  const legacy = chooseBackend(undefined, config, { TYPESAFE_API_KEY: "k", TYPESAFE_BASE_URL: "http://proxy/" }, {});
+  assert.equal(legacy.ok && legacy.backend.identity, "decision-model typesafe http://proxy/v1");
+  const long = chooseBackend(undefined, resolveConfig({ longContext: true }), { TYPESAFE_API_KEY: "k" }, {});
+  assert.equal(long.ok && long.backend.identity, "decision-model typesafe https://api.typesafe.ai/v1 long-context");
+
+  const viaGateway = chooseBackend(undefined, config, { AI_GATEWAY_API_KEY: "g" }, {});
+  assert.ok(viaGateway.ok && viaGateway.backend.name === "decision-model" && viaGateway.backend.model === "typesafe-ai/jev");
+  const gatewayPinned = chooseBackend(undefined, config, { AI_GATEWAY_API_KEY: "g" }, { model: "jev-1.13.0" });
+  assert.equal(gatewayPinned.ok && gatewayPinned.backend.model, "typesafe-ai/jev-1.13.0");
+  const typesafeWins = chooseBackend(undefined, config, { AI_GATEWAY_API_KEY: "g", TYPESAFE_API_KEY: "k" }, {});
+  assert.ok(typesafeWins.ok && typesafeWins.backend.identity.startsWith("decision-model typesafe"));
+
   const judge = chooseBackend(undefined, config, { LLM_JUDGE_BASE_URL: "http://x", LLM_JUDGE_MODEL: "m" }, {});
-  assert.ok(judge.ok && judge.backend.name === "llm-judge");
+  assert.ok(judge.ok && judge.backend.name === "llm-judge" && judge.backend.identity === "llm-judge openai-compatible http://x");
+  const jsonObject = chooseBackend("llm-judge", config, { LLM_JUDGE_BASE_URL: "http://x", LLM_JUDGE_MODEL: "m", LLM_JUDGE_STRUCTURED_OUTPUTS: "false" }, {});
+  assert.equal(jsonObject.ok && jsonObject.backend.identity, "llm-judge openai-compatible http://x json-object");
+  const gatewayJudge = chooseBackend(undefined, config, { AI_GATEWAY_API_KEY: "g", LLM_JUDGE_MODEL: "anthropic/claude-sonnet-4.5" }, {});
+  assert.ok(gatewayJudge.ok && gatewayJudge.backend.name === "llm-judge" && gatewayJudge.backend.identity === "llm-judge gateway default");
   const noModel = chooseBackend("llm-judge", config, { LLM_JUDGE_BASE_URL: "http://x" }, {});
   assert.deepEqual(noModel, { ok: false, name: "llm-judge", reason: "LLM_JUDGE_MODEL is not set" });
+  const noJudge = chooseBackend("llm-judge", config, { LLM_JUDGE_MODEL: "m" }, {});
+  assert.deepEqual(noJudge, { ok: false, name: "llm-judge", reason: "LLM_JUDGE_BASE_URL or AI_GATEWAY_API_KEY is not set" });
+
   const command = chooseBackend(undefined, resolveConfig({ command: "claude -p" }), {}, {});
   assert.ok(command.ok && command.backend.name === "command" && command.backend.model === "claude -p");
   const pinned = chooseBackend("decision-model", resolveConfig({ model: "jev-old" }), { TYPESAFE_API_KEY: "k" }, { model: "jev-cli" });

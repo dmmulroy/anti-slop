@@ -161,7 +161,14 @@ rules: {
 
 ### Diff rules
 
-Diff rules judge a whole change set for smells that span files or need git history (shotgun surgery, divergent change, duplicated code, scope creep). The judge is a decision model (TypeSafe Jev), an OpenAI-compatible LLM, or a CLI agent such as `claude -p` or `droid exec`. They run in `check:full`, not `check:fast`:
+Diff rules judge a whole change set for smells that span files or need git history (shotgun surgery, divergent change, duplicated code, scope creep). The judge is a decision model (TypeSafe Jev, directly or through AI Gateway), a chat model (AI Gateway or any OpenAI-compatible server), or a CLI agent such as `claude -p` or `droid exec`. The model backends use the [Vercel AI SDK](https://ai-sdk.dev), so install it next to the vendored files when you use them; the CLI backend needs only Node:
+
+```sh
+npm install --save-dev ai@7.0.173 zod@4.6.7 @ai-sdk/typesafe-ai@3.0.40   # decision model, direct
+npm install --save-dev @ai-sdk/openai-compatible@3.0.92                  # chat model at LLM_JUDGE_BASE_URL
+```
+
+They run in `check:full`, not `check:fast`:
 
 ```sh
 node tools/oxlint/anti-slop/diff-rules/run.ts [--base <ref>] [--committed|--staged|--working] [--fail] [--json]

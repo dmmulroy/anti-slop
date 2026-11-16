@@ -43,9 +43,12 @@ export interface DiffRulesConfig {
   readonly historyCommits?: number;
   /** Recent commits scanned for co-change counts between touched files. */
   readonly coChangeCommits?: number;
+  /** Milliseconds per request, including the AI SDK's retries. */
   readonly timeoutMs?: number;
   /** Requests in flight at once. */
   readonly concurrency?: number;
+  /** Decision model only: raise Jev's 64k-token request limit to 262k (slower, less accurate). */
+  readonly longContext?: boolean;
 }
 
 export interface ResolvedConfig {
@@ -61,6 +64,7 @@ export interface ResolvedConfig {
   readonly coChangeCommits: number;
   readonly timeoutMs: number;
   readonly concurrency: number;
+  readonly longContext: boolean;
 }
 
 /** Git glob pathspecs for files that carry no design signal. */
@@ -186,6 +190,8 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
   if (ci !== "skip" && ci !== "fail") fail('ci must be "skip" or "fail"');
   const defaultExcludes = raw.defaultExcludes ?? true;
   if (typeof defaultExcludes !== "boolean") fail("defaultExcludes must be a boolean");
+  const longContext = raw.longContext ?? false;
+  if (typeof longContext !== "boolean") fail("longContext must be a boolean");
   const rules = raw.rules ?? [];
   if (!Array.isArray(rules)) fail("rules must be a list");
   return {
@@ -201,6 +207,7 @@ export function resolveConfig(raw: unknown): ResolvedConfig {
     coChangeCommits: positiveInteger(raw, "coChangeCommits", 200),
     timeoutMs: positiveInteger(raw, "timeoutMs", 120_000),
     concurrency: positiveInteger(raw, "concurrency", 4),
+    longContext,
   };
 }
 
