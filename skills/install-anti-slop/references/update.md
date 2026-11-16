@@ -67,7 +67,7 @@ Complete when every incoming change is classified as applied, already present, i
 
 ## 4. Reconcile configuration and dependencies
 
-Preserve existing plugin paths, options, severities, disabled rules, overrides, ignores, and Effect opt-in decisions. Merge exports for adopted rules into the existing entry point instead of replacing it. Check native companion rules when adopting related custom rules.
+Preserve existing plugin paths, options, severities, disabled rules, overrides, ignores, and Effect opt-in decisions. Treat jev overlay configs (`oxlint.jev.config.*`), `anti-slop-diff-rules.config.*`, and edited questions or cutoffs in the vendored `jev/`, `martinfowler/jev-rules.ts`, and `diff-rules/rules.ts` as local customizations. Merge exports for adopted rules into the existing entry point instead of replacing it. Check native companion rules when adopting related custom rules.
 
 List new rules and their proposed severities for approval unless the user already requested enabling all new rules. Existing disabled rules stay disabled. Merely adding a new rule implementation need not enable it.
 

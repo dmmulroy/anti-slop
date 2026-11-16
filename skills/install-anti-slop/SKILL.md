@@ -74,6 +74,7 @@ Complete when the operation and target path are established and pre-existing wor
      "anti-slop/no-reduce-accumulator-copy": "error",
      "anti-slop/no-chained-type-assertions": "error",
      "anti-slop/no-conditional-spread": "error",
+     "anti-slop/no-disabled-type-assertion-rules": "error",
      "anti-slop/no-known-value-widening": "error",
      "anti-slop/no-module-mocking": "error",
      "anti-slop/no-object-parameters": "error",
@@ -110,9 +111,16 @@ Complete when the operation and target path are established and pre-existing wor
      "anti-slop-effect/no-manual-tag-comparison": "error",
      "anti-slop-effect/no-manual-tagged-construction": "error",
      "anti-slop-effect/no-manual-tagged-type": "error",
+     "anti-slop-effect/no-ordie-in-service-construction": "error",
      "anti-slop-effect/no-service-constructor-imports": "error",
+     "anti-slop-effect/no-service-parameters": "error",
+     "anti-slop-effect/no-test-code-in-src": "error",
      "anti-slop-effect/prefer-effect-match": "error",
      "anti-slop-effect/prefer-tagged-error-handling": "error",
+     "anti-slop-effect/prefer-yield-service": "error",
+     "anti-slop-effect/require-cause-when-narrowing": "error",
+     "anti-slop-effect/require-operation-span": "error",
+     "anti-slop-effect/require-service-make-layer": "error",
    },
    ```
 
@@ -137,6 +145,14 @@ Complete when the operation and target path are established and pre-existing wor
    ```
 
    Complete when the generic rules and eligible Effect rules are registered and existing configuration is preserved.
+
+   Optional, paid checks. Offer them only when the user opts in, because each match or diff is a paid model request:
+
+   - **Jev Effect rules** (Effect repositories): install `oxlint-plugin-jev` as a development dependency and add `"oxlint-plugin-jev"` to the base `jsPlugins` without enabling `jev/ask`. Create `oxlint.jev.config.ts` from the overlay in `docs/jev.md` upstream (`extends: [base]`, a source override that excludes test globs, and a test override using `effectTestJevRules`). Add `"lint:jev": "node tools/oxlint/anti-slop/jev/lint-changed.ts -c oxlint.jev.config.ts"` and `"lint:jev:full": "node tools/oxlint/anti-slop/jev/lint-changed.ts --all -c oxlint.jev.config.ts"`, then `check:fast` running the normal checks plus `lint:jev`, and `check:full` running them plus `lint:jev:full`. Tell the user to set `TYPESAFE_API_KEY` in CI. The runner needs Node 22.18 or later.
+   - **Martin Fowler smells:** register `anti-slop-martinfowler` with its rules at `"warn"` (see the README). Its jev preset uses `jev/suggest` and per-rule `message`, which need the `K-Mistele/oxlint-plugin-jev` fork; put it in the same jev overlay.
+   - **Diff rules:** add `"lint:diff": "node tools/oxlint/anti-slop/diff-rules/run.ts"` and append it to `check:full` only, never `check:fast`. They need `TYPESAFE_API_KEY`, `LLM_JUDGE_BASE_URL` plus `LLM_JUDGE_MODEL`, or a judge `command`; without credentials they warn and exit 0. Keep the vendored copy outside `node_modules`, where Node does not strip types. Add `anti-slop-diff-rules.config.ts` only for local rule, cutoff, or exclude changes.
+
+   Record the `oxlint-plugin-jev` version (or fork commit) in `UPSTREAM.md` when any jev preset is installed.
 
 4. Run the repository's lint command and typecheck. For Vite+, run the repository's full `vp check` command after adding both lint and format ignores. If findings appear in owned project source, report them and fix them only when the user asked for migration/cleanup. Do not suppress rules, weaken rule severity, add unsafe casts, or mechanically launder types to make lint pass.
 

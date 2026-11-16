@@ -62,6 +62,7 @@ export default defineConfig({
     "anti-slop/no-reduce-accumulator-copy": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-spread": "error",
+    "anti-slop/no-disabled-type-assertion-rules": "error",
     "anti-slop/no-known-value-widening": "error",
     "anti-slop/no-module-mocking": "error",
     "anti-slop/no-object-parameters": "error",
@@ -101,9 +102,16 @@ export default defineConfig({
     "anti-slop-effect/no-manual-tag-comparison": "error",
     "anti-slop-effect/no-manual-tagged-construction": "error",
     "anti-slop-effect/no-manual-tagged-type": "error",
+    "anti-slop-effect/no-ordie-in-service-construction": "error",
     "anti-slop-effect/no-service-constructor-imports": "error",
+    "anti-slop-effect/no-service-parameters": "error",
+    "anti-slop-effect/no-test-code-in-src": "error",
     "anti-slop-effect/prefer-effect-match": "error",
-    "anti-slop-effect/prefer-tagged-error-handling": "error"
+    "anti-slop-effect/prefer-tagged-error-handling": "error",
+    "anti-slop-effect/prefer-yield-service": "error",
+    "anti-slop-effect/require-cause-when-narrowing": "error",
+    "anti-slop-effect/require-operation-span": "error",
+    "anti-slop-effect/require-service-make-layer": "error"
   }
 });
 ```
@@ -130,6 +138,37 @@ export default defineConfig({
 
 This repository lints itself the same way in `oxlint.config.ts`.
 
+### Optional LLM-judged Effect rules (Jev)
+
+`src/jev/` ships plain-English Effect review rules for [`oxlint-plugin-jev`](https://github.com/wobsoriano/oxlint-plugin-jev) (`effectSourceJevRules`, `effectTestJevRules`) and `jev/lint-changed.ts`, which runs oxlint on staged, unstaged, and untracked files only (`--all` for everything). Every match is a paid request, so keep `jev/ask` in an overlay config, never the editor config. See [docs/jev.md](docs/jev.md).
+
+### Optional Martin Fowler smell rules
+
+`martinfowler/index.ts` registers `anti-slop-martinfowler`: warn-level rules named after the code smells in *Refactoring* (2nd ed., ch. 3) whose messages name the refactoring to apply (`mysterious-name`, `long-function`, `long-parameter-list`, `global-data`, `mutable-data`, `repeated-switches`, `loops`, and `message-chains`, which is off by default). Some overlap other anti-slop rules on purpose so the bundle stands alone. `martinfowler/jev-rules.ts` is a matching `jev/suggest` preset for smells that need judgement; it needs the `message` field and `jev/suggest` rule from the `K-Mistele/oxlint-plugin-jev` fork. See [docs/martinfowler.md](docs/martinfowler.md).
+
+```ts
+jsPlugins: [{ name: "anti-slop-martinfowler", specifier: "./tools/oxlint/anti-slop/martinfowler/index.ts" }],
+rules: {
+  "anti-slop-martinfowler/global-data": "warn",
+  "anti-slop-martinfowler/long-function": "warn",
+  "anti-slop-martinfowler/long-parameter-list": "warn",
+  "anti-slop-martinfowler/loops": "warn",
+  "anti-slop-martinfowler/mutable-data": "warn",
+  "anti-slop-martinfowler/mysterious-name": "warn",
+  "anti-slop-martinfowler/repeated-switches": "warn",
+},
+```
+
+### Diff rules
+
+Diff rules judge a whole change set for smells that span files or need git history (shotgun surgery, divergent change, duplicated code, scope creep). The judge is a decision model (TypeSafe Jev), an OpenAI-compatible LLM, or a CLI agent such as `claude -p` or `droid exec`. They run in `check:full`, not `check:fast`:
+
+```sh
+node tools/oxlint/anti-slop/diff-rules/run.ts [--base <ref>] [--committed|--staged|--working] [--fail] [--json]
+```
+
+See [docs/diff-rules.md](docs/diff-rules.md).
+
 ## Rules
 
 ### Generic rules
@@ -139,6 +178,7 @@ This repository lints itself the same way in `oxlint.config.ts`.
 - `no-reduce-accumulator-copy` — rejects non-spread accumulator copies inside reducers; complements native `oxc/no-accumulating-spread`.
 - `no-chained-type-assertions` — rejects nested `as` and angle-bracket assertions that fabricate evidence; chains made only of `as const` remain valid.
 - `no-conditional-spread` — rejects ternary and logical expressions in object, array, call, and JSX spreads.
+- `no-disabled-type-assertion-rules` — rejects inline `oxlint-disable`/`eslint-disable` comments that turn off a type-assertion rule (`anti-slop/no-chained-type-assertions`, `anti-slop/no-widen-then-assert`, `anti-slop/require-safety-comment-for-type-assertion`, `effecttsgo/unsafe-effect-type-assertion`, `typescript/consistent-type-assertions`, `typescript/no-unsafe-type-assertion`), and disable comments that name no rule at all. Configure `additionalRules` to protect more rules.
 - `no-known-value-widening` — rejects known expressions flowing into explicit `unknown`, `object`, anonymous-object, or open-dictionary targets, including known arguments passed to local `unknown` type predicates. Empty dictionary accumulators and finite-key `Record` targets remain valid.
 - `no-module-mocking` — rejects Vitest and Jest `mock`, `doMock`, and `unstable_mockModule` calls in favor of real dependency seams.
 - `no-object-parameters` — rejects `object`, unions containing it, and scoped or transparent generic aliases that resolve to it on function inputs.
@@ -160,10 +200,17 @@ This repository lints itself the same way in `oxlint.config.ts`.
 - `no-manual-effect-error-tag` — rejects manual `_tag` comparisons and switches inside broad `Effect.catch`, `Effect.catchAll`, and `Effect.catchIf` handlers in favor of tagged error handlers.
 - `no-manual-tag-comparison` — rejects direct `_tag` comparisons and `_tag` switches in favor of `Match`, `Predicate.isTagged`, or tagged-enum matching.
 - `no-manual-tagged-construction` — rejects literal `_tag` object construction in favor of Schema, tagged class/error, or `Data.taggedEnum` constructors, including `_tag` object patterns passed to `Match.when` and `Match.not`, and literal `_tag` class fields.
+- `no-ordie-in-service-construction` — rejects `Effect.orDie`/`Effect.orDieWith` while a service is constructed: in its options or static `make`, its static `layer*` members, and `Layer.effect`/`Layer.scoped`/`Layer.unwrap*` arguments. Construction stops at operation boundaries (functions other than `Effect.gen` generators and `Effect.suspend`/`Effect.sync` thunks, `Effect.fn` definitions, object-literal properties, and effects a generator defines without yielding). `Layer.orDie` is rejected anywhere. Test and spec files are skipped.
+- `no-service-parameters` — rejects function, method, and function-type parameters typed `Context.Context`, `ManagedRuntime.ManagedRuntime`, `Layer.Layer`, or a `Context.Service` class declared in the same file. Layer combinators (functions with a `Layer.Layer` return type or an expression body that is a `Layer.*` call or pipe) may take layers, and callbacks passed directly to an Effect API such as `Effect.contextWith` are skipped. Test and spec files are skipped.
+- `no-test-code-in-src` — in files under a source directory (default `src`), rejects test and spec files and files inside a test directory (default `test`, `tests`, `__tests__`), relative imports and re-exports that pass through a test directory, and exported declarations, export specifiers, and static class members whose names match a test-double pattern such as `layerTest`, `FakeClock`, `WidgetsMock`, or `makeStubStore`. `layerFixtures` stand-ins and domain names such as `TestConnection` or `hitTest` are allowed by default. Configure `sourceDirectories`, `testDirectories`, and `testNamePatterns` (regular-expression strings).
 - `no-manual-tagged-type` — rejects `_tag` properties written by hand in `type` and `interface` declarations. Define the value with a Schema or Data tagged constructor and infer the type from it, e.g. `export type X = typeof X.Type`. Also rejects `_tag` in inline type literals, including generic constraints such as `<A extends { readonly _tag: string }>`.
 - `no-service-constructor-imports` — rejects named `make<CapabilityName>` imports from relative project modules outside `*.test.*` and `*.spec.*` files. Runtime callers should import the owning Layer and yield the contextual service instead. Package and path-alias imports, default imports, and static constructors such as `WorkspaceName.make` are outside the rule.
 - `prefer-effect-match` — rejects chained literal ternaries over the same value in favor of Effect's `Match` API.
 - `prefer-tagged-error-handling` — rejects `Predicate.isTagged` checks on the error inside broad `Effect.catch`, `Effect.catchAll`, and `Effect.catchIf` handlers in favor of `Effect.catchTag`/`Effect.catchTags`, or `Effect.catchReason`/`Effect.catchReasons` when the check is on `error.reason`. Direct `_tag` comparisons stay with `no-manual-effect-error-tag`.
+- `prefer-yield-service` — rejects `const ctx = yield* Effect.context<...>()` when `ctx` is later passed to `Effect.provide`, `Effect.provideContext`, `Layer.provide`, or `Layer.succeedContext`. Yield each service instead and let requirements flow through R. Capturing the context for a runtime bridge such as `Effect.runForkWith(ctx)` stays valid.
+- `require-cause-when-narrowing` — rejects `Effect.mapError`, `Effect.catch`, `Effect.catchAll`, `Effect.catchCause`, and `Effect.orElse` handlers that ignore their error and construct a new one (`new X(...)` or `X.make(...)`, returned, yielded, or passed to `Effect.fail`) without a `cause` property, unless an earlier step of the same pipe is `Effect.tapError`, `tapErrorCause`, `tapCause`, or `tapErrorTag`. `catchTag`/`catchTags` are outside the rule.
+- `require-operation-span` — requires each operation in the object a `Context.Service` make returns (directly or through `X.of({...})`) to contain `Effect.fn("name")` or `Effect.withSpan(...)`, or to call a same-file function that does. Operations are functions that return an `Effect.*` expression and `Effect`-valued properties; plain helpers, delegations to another service, streams, and values are skipped. Test and spec files are skipped.
+- `require-service-make-layer` — requires each `Context.Service` class to define `make` (options or static) and `static readonly layer = Layer.effect(this, this.make)` (optionally piped, or `(options) => Layer.effect(this, this.make(options))`). Other static `layer*` members that build this service must derive from its `layer` or `make`. Outside the class, `Layer.effect(X, ...)` must pass `X.make` or `X.make(...)`; tags imported from `effect`/`@effect/*` are exempt. Tag-only services with no make and no layers (request-scoped values, host bindings) are allowed; set `allowTagOnly: false` to require a make for them too. Test and spec files are skipped.
 
 ### Analysis boundaries
 
@@ -239,6 +286,24 @@ const user = input as object as User;
 const options = {
   ...(timeout ?? defaults),
 };
+```
+
+### `no-disabled-type-assertion-rules`
+
+```ts
+// oxlint-disable-next-line typescript/consistent-type-assertions
+const id = value as UserId;
+```
+
+Remove the cast, or add a file-level override with its reason in the lint configuration. A disable comment that names no rule (`// oxlint-disable-next-line`) is rejected too, because it silently turns these rules off. Protect more rules with `additionalRules`:
+
+```json
+{
+  "anti-slop/no-disabled-type-assertion-rules": [
+    "error",
+    { "additionalRules": ["local/no-type-assertion"] }
+  ]
+}
 ```
 
 ### `no-known-value-widening`
@@ -327,6 +392,88 @@ import { makeIssueService } from "./issue-service.ts";
 ```
 
 Import the owning Layer and yield `IssueService` instead. Focused `*.test.*` and `*.spec.*` files may import the constructor directly.
+
+### Effect: `require-service-make-layer`
+
+```ts
+export class AppRegistry extends Context.Service<AppRegistry, AppRegistryShape>()("@app/AppRegistry") {}
+
+export const AppRegistryLive = Layer.effect(AppRegistry, Effect.gen(function* () {
+  const store = yield* AppStore;
+  return { find: (id: AppId) => store.find(id) };
+}));
+```
+
+Move the constructor into the class and derive the layer from it:
+
+```ts
+export class AppRegistry extends Context.Service<AppRegistry, AppRegistryShape>()("@app/AppRegistry", {
+  make: Effect.gen(function* () {
+    const store = yield* AppStore;
+    return { find: Effect.fn("AppRegistry.find")(function* (id: AppId) { return yield* store.find(id); }) };
+  }),
+}) {
+  static readonly layer = Layer.effect(this, this.make);
+  static readonly layerSelfBinding = AppRegistry.layer.pipe(Layer.provide(selfBinding));
+}
+```
+
+### Effect: `no-test-code-in-src`
+
+```ts
+// src/widgets.ts
+export const layerTest = WidgetService.layer.pipe(Layer.provide(FakeProvider));
+```
+
+Move it to `test/support/layers.ts` and build it from the production class there.
+
+### Effect: `no-service-parameters`
+
+```ts
+const listWidgets = (input: ListInput, context: Context.Context<WidgetProvider>) =>
+  fetchWidgets(input).pipe(Effect.provide(context));
+```
+
+`yield* WidgetProvider` inside the operation instead and pass only plain values.
+
+### Effect: `prefer-yield-service`
+
+```ts
+const services = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
+return { build: (dir: string) => runBuild(dir).pipe(Effect.provideContext(services)) };
+```
+
+Yield `FileSystem.FileSystem` and `Path.Path` where they are used and let `runBuild`'s requirements reach the layer.
+
+### Effect: `require-cause-when-narrowing`
+
+```ts
+decode(text).pipe(Effect.mapError(() => BadRequest.make({ reason: "Invalid JSON" })));
+```
+
+Keep the original error: `Effect.mapError((cause) => BadRequest.make({ reason: "Invalid JSON", cause }))`, or put `Effect.tapError(Effect.logError)` before the narrowing step.
+
+### Effect: `require-operation-span`
+
+```ts
+make: Effect.gen(function* () {
+  const store = yield* Store;
+  return { find: (id: string) => store.find(id).pipe(Effect.map(toWidget)) };
+}),
+```
+
+Write `find: Effect.fn("Widgets.find")(function* (id: string) { ... })`, or end the pipe with `Effect.withSpan("Widgets.find", { attributes: { id } })`.
+
+### Effect: `no-ordie-in-service-construction`
+
+```ts
+make: Effect.gen(function* () {
+  const token = yield* Config.redacted("API_TOKEN").pipe(Effect.orDie);
+  return { token };
+}),
+```
+
+Leave the `ConfigError` (or a Schema.TaggedError that classifies it) in the layer's error channel and handle it where the runtime is built. `Layer.orDie` is rejected for the same reason.
 
 ### Effect: tagged values and matching
 
