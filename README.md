@@ -1,71 +1,87 @@
 # anti-slop
 
-[![skills.sh](https://skills.sh/b/dmmulroy/anti-slop)](https://skills.sh/dmmulroy/anti-slop)
+Oxlint rules that reject the low-evidence TypeScript that coding agents tend to write: casts without a stated invariant, `unknown` leaking through contracts, conditional spreads, module mocks, and similar patterns. The diagnostics tell the agent what to do instead.
 
-Opinionated Oxlint rules that reject low-evidence and low-signal TypeScript and JavaScript patterns.
+anti-slop was created by [Dillon Mulroy](https://github.com/dmmulroy) at [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop). This fork, maintained by [Kyle Mistele](https://github.com/K-Mistele), keeps his core rules and adds four things:
 
-Anti-slop is first and foremost the ruleset I use with my work, projects, and team. It reflects my preferences and taste rather than attempting to be a universal coding standard.
+- more Effect rules;
+- a Martin Fowler code-smell bundle;
+- LLM-judged [Jev](https://typesafe.ai) rules;
+- diff rules that judge a whole change set.
 
-**This project is meant to be vendored**, not treated as a fixed npm dependency. There is no official npm package. Copy the rules into your repository, read them, and change them to match your team's standards. The bundled agent skill handles the initial copy and configuration; after that, the vendored files are yours to maintain and make your own. Community-maintained forks and packages are welcome, but their compatibility and release lifecycle belong to their maintainers.
+The plugin is meant to be vendored, not installed from npm. Copy the source into your repository, then treat the rules as your own code: read them, change them, and keep them in sync with your team's standards.
 
-## Install with an agent skill
+## Install
 
-```bash
-npx skills add dmmulroy/anti-slop --skill install-anti-slop
+anti-slop needs Node 22.18 or later, and Oxlint with `@oxlint/plugins` at the same exact version. A TypeScript `oxlint.config.ts` also needs `"type": "module"` in `package.json`.
+
+### With the agent skill
+
+```sh
+npx skills add K-Mistele/anti-slop --skill install-anti-slop
 ```
 
-Then ask your coding agent to install or configure anti-slop in the current repository. The skill copies the plugin, installs compatible Oxlint dependencies—matching an existing Oxlint version when present—merges the plugin into the existing lint configuration, enables every generic rule, and validates the result. In repositories that depend directly on Effect, it also enables the opt-in Effect rule group.
+Then ask your coding agent to install anti-slop. The skill does the following:
 
-### Update an existing installation
+- runs `scripts/install.mjs`, which copies the plugin to `tools/oxlint/anti-slop/`;
+- installs `oxlint` and `@oxlint/plugins` at matching versions;
+- merges the plugin into your existing Oxlint or Vite+ config, with every core rule enabled;
+- enables the Effect rules and the `@effect/tsgo` diagnostics when `effect` is a direct dependency;
+- runs your lint and typecheck.
 
-Ask your agent to **update anti-slop while preserving local customizations**, optionally naming an upstream revision or selected fixes. The same skill stages incoming source separately, uses a three-way merge when the original upstream snapshot is recoverable, and otherwise ports reviewed changes conservatively. It preserves local rules and configuration, asks about conflicting policy and enabling new rules, and records provenance for future updates. It does not force-replace the vendored directory.
+The Jev rules and diff rules make paid model requests, so the skill sets them up only when you ask.
 
-For latest upstream, ask the agent to retrieve and identify that revision; an already-installed skill bundle may be older. The copy script itself does not fetch or merge updates.
+To update an existing copy, ask the agent to update anti-slop while keeping local changes. The skill merges upstream changes into the vendored copy instead of replacing it ([skills/install-anti-slop/references/update.md](skills/install-anti-slop/references/update.md)).
 
-To inspect available skills first:
+You can run the copy script yourself from the target repository. `<skill-directory>` is where the skill was installed, such as `.agents/skills/install-anti-slop`:
 
-```bash
-npx skills add dmmulroy/anti-slop --list
+```sh
+node <skill-directory>/scripts/install.mjs                     # copies to tools/oxlint/anti-slop/
+node <skill-directory>/scripts/install.mjs lint/anti-slop      # copies to another directory
+node <skill-directory>/scripts/install.mjs --jev               # also copies the built Jev fork to tools/oxlint/oxlint-plugin-jev/
+node <skill-directory>/scripts/install.mjs --jev=vendor/jev    # puts the Jev fork somewhere else
 ```
 
-## Manual local installation
+The script refuses to overwrite an existing directory. `--force` overrides that check; use it only after you have reviewed the existing copy.
 
-Copy `src/` into the target repository, for example at `tools/oxlint/anti-slop/`. If the repository already uses `oxlint`, install `@oxlint/plugins` at exactly the resolved Oxlint version. Otherwise, install the same current version of both packages. Keep both versions exact so upgrades move them together.
+### Manually
 
-Register the copied entry point in `oxlint.config.ts`:
+```sh
+git clone --depth 1 https://github.com/K-Mistele/anti-slop /tmp/anti-slop
+mkdir -p tools/oxlint && cp -R /tmp/anti-slop/src tools/oxlint/anti-slop
+npm install --save-dev --save-exact oxlint@1.93.0 @oxlint/plugins@1.93.0
+```
+
+If you already depend on `oxlint`, install `@oxlint/plugins` at exactly that version instead. The upstream repository is tested with 1.86.0. Running `node /tmp/anti-slop/skills/install-anti-slop/scripts/install.mjs --jev` from your repository does the same copy and also adds the Jev fork.
+
+Keep `src/vendor/eslint-stylistic/LICENSE` and `UPSTREAM.md` with the copy, because `require-readable-spacing` includes MIT-licensed code from ESLint Stylistic.
+
+## Configure
+
+The following `oxlint.config.ts` enables the core rules, the Effect rules, and the Fowler bundle. The same `ignorePatterns`, `jsPlugins`, and `rules` work in `.oxlintrc.json` or under `lint` in a Vite+ config.
 
 ```ts
 import { defineConfig } from "oxlint";
 
 export default defineConfig({
-  ignorePatterns: [
-    ".agent/**",
-    ".agents/**",
-    ".claude/**",
-    ".codex/**",
-    ".continue/**",
-    ".cursor/**",
-    ".gemini/**",
-    ".opencode/**",
-    ".pi/**",
-    ".roo/**",
-    ".windsurf/**",
-    "tools/oxlint/anti-slop/**",
-  ],
+  // Do not lint the vendored plugin or installed agent assets. Add any other agent directories you use.
+  ignorePatterns: [".agents/**", ".claude/**", ".cursor/**", "tools/oxlint/**"],
   jsPlugins: [
     { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+    { name: "anti-slop-effect", specifier: "./tools/oxlint/anti-slop/effect/index.ts" }, // Effect repositories only
+    { name: "anti-slop-martinfowler", specifier: "./tools/oxlint/anti-slop/martinfowler/index.ts" },
   ],
   rules: {
-    "anti-slop/max-ternary-depth": ["error", { "maxDepth": 2 }],
     "oxc/no-accumulating-spread": "error",
+    "anti-slop/max-ternary-depth": ["error", { maxDepth: 2 }],
     "anti-slop/no-array-filter-map": "error",
-    "anti-slop/no-reduce-accumulator-copy": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-spread": "error",
     "anti-slop/no-disabled-type-assertion-rules": "error",
     "anti-slop/no-known-value-widening": "error",
     "anti-slop/no-module-mocking": "error",
     "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reduce-accumulator-copy": "error",
     "anti-slop/no-reflect-apply": "error",
     "anti-slop/no-reflect-get": "error",
     "anti-slop/no-reprovide-ambient-service": "error",
@@ -77,27 +93,8 @@ export default defineConfig({
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-readable-spacing": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error"
-  }
-});
-```
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
 
-The same `ignorePatterns`, `jsPlugins`, and rules work under `lint` in a Vite+ config. Merge the ignore patterns into Vite+'s `fmt.ignorePatterns` as well so `vp check` does not reformat installed agent assets or the vendored plugin. Preserve existing ignores and add any other project-local agent tooling directories detected in the repository; do not broadly ignore every dot-directory.
-
-### Optional Effect rules
-
-Effect-specific rules live in a separate plugin so projects that do not use Effect do not inherit Effect architecture policy. Register the Effect entry point only in repositories that use Effect:
-
-```ts
-export default defineConfig({
-  jsPlugins: [
-    { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
-    {
-      name: "anti-slop-effect",
-      specifier: "./tools/oxlint/anti-slop/effect/index.ts"
-    }
-  ],
-  rules: {
     "anti-slop-effect/no-manual-effect-error-tag": "error",
     "anti-slop-effect/no-manual-tag-comparison": "error",
     "anti-slop-effect/no-manual-tagged-construction": "error",
@@ -111,574 +108,266 @@ export default defineConfig({
     "anti-slop-effect/prefer-yield-service": "error",
     "anti-slop-effect/require-cause-when-narrowing": "error",
     "anti-slop-effect/require-operation-span": "error",
-    "anti-slop-effect/require-service-make-layer": "error"
-  }
+    "anti-slop-effect/require-service-make-layer": "error",
+
+    // Smells are prompts to look, so they warn. message-chains is left off by default.
+    "anti-slop-martinfowler/global-data": "warn",
+    "anti-slop-martinfowler/long-function": "warn",
+    "anti-slop-martinfowler/long-parameter-list": "warn",
+    "anti-slop-martinfowler/loops": "warn",
+    "anti-slop-martinfowler/mutable-data": "warn",
+    "anti-slop-martinfowler/mysterious-name": "warn",
+    "anti-slop-martinfowler/repeated-switches": "warn",
+  },
 });
 ```
 
-### Effect language service
+Effect repositories should also run every `@effect/tsgo` diagnostic as an error. The skill sets this up, and [`oxlint.config.ts`](oxlint.config.ts) in this repository shows the configuration.
 
-Effect repositories should also run every `@effect/tsgo` diagnostic as an Oxlint error. Install `@effect/tsgo` and `oxlint-tsgolint` at versions that support your `oxlint` and `typescript`, add `"prepare": "effect-tsgo patch --oxlint"`, and add `{ "name": "@effect/language-service", "diagnostics": false }` to `compilerOptions.plugins`. Then extend every preset and promote each rule except `missing-pipeable-signature`, which demands Effect-style data-last overloads on every exported multi-argument function:
+## What the rules catch
+
+The following input produces three errors under the config above:
 
 ```ts
-import { presets } from "@effect/tsgo/oxlint-presets";
+export const toUserId = (value: string) => value as UserId;
 
-const effectTsgoRules = Object.values(presets).flatMap((preset) =>
-  Object.keys(preset.rules ?? {}),
-);
+export const handlers: Record<string, Handler> = { start };
 
-export default defineConfig({
-  extends: Object.values(presets),
+export const parse = (text: string) =>
+  decode(text).pipe(Effect.mapError(() => BadRequest.make({ reason: "Invalid JSON" })));
+```
+
+```text
+x anti-slop(require-safety-comment-for-type-assertion): This type assertion has no `SAFETY:` justification.
+  State the checked invariant immediately before the assertion or its containing statement.
+
+x anti-slop(no-known-value-widening): The explicit open dictionary type on binding `handlers` discards known
+  type evidence. Keep inference, validate with `satisfies`, or use a named owner contract.
+
+x anti-slop-effect(require-cause-when-narrowing): This Effect.mapError handler discards the original error and
+  constructs a new one without it. Name the handler's parameter and pass it as `cause`
+  (`(error) => new BadRequest({ ..., cause: error })`), or log it first with `Effect.tapError(Effect.logError)`
+  before narrowing.
+```
+
+The fixed version passes:
+
+```ts
+// SAFETY: callers pass identifiers that parseUserId already validated.
+export const toUserId = (value: string) => value as UserId;
+
+export const handlers = { start } satisfies Record<string, Handler>;
+
+export const parse = (text: string) =>
+  decode(text).pipe(Effect.mapError((cause) => BadRequest.make({ reason: "Invalid JSON", cause })));
+```
+
+The rules work on the syntax tree and same-file scopes. They do not use the type checker, so they cannot see imported type definitions or call signatures from other files. Each rule's source file documents its options and the cases it skips.
+
+## Jev rules (LLM-judged)
+
+Some problems need judgment, such as a service that only forwards calls, a recovery that drops an error without logging it, or feature envy. anti-slop ships two plugins of yes/no questions for these. Each question is its own Oxlint rule:
+
+- `anti-slop-effect-jev`: 10 questions for Effect source files and 1 for tests.
+- `anti-slop-martinfowler-jev`: 12 Fowler smells, meant to run at `warn`.
+
+They run on [Kyle's fork of `oxlint-plugin-jev`](https://github.com/K-Mistele/oxlint-plugin-jev), which provides `createJevPlugin`. The fork is not on npm. It lives in this repository as the `vendor/oxlint-plugin-jev` submodule, and `install.mjs --jev` copies its built package for a `file:` dependency:
+
+```sh
+node <skill-directory>/scripts/install.mjs --jev
+npm install --save-dev ./tools/oxlint/oxlint-plugin-jev   # brings ai, @ai-sdk/typesafe-ai, zod, synckit
+```
+
+Register both plugins in the base config without enabling any of their rules. That way the editor and plain `oxlint` runs never send a request:
+
+```ts
+// oxlint.config.ts, in jsPlugins
+{ name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" },
+{ name: "anti-slop-martinfowler-jev", specifier: "./tools/oxlint/anti-slop/martinfowler/jev-plugin.ts" },
+```
+
+Enable the questions in an overlay config and choose a severity for each one. A rule set to `"off"` sends nothing.
+
+```ts
+// oxlint.jev.config.ts
+import type { OxlintConfig } from "oxlint";
+
+import baseConfig from "./oxlint.config.ts";
+
+// Spread the base instead of using `extends`: Oxlint rejects relative jsPlugins that arrive through `extends`.
+const base: OxlintConfig = baseConfig;
+
+const baseOverrides = base.overrides ?? [];
+
+const testFiles = ["**/*.test.*", "**/*.spec.*", "test/**", "tests/**"];
+
+const config: OxlintConfig = {
+  ...base,
   rules: {
-    ...Object.fromEntries(effectTsgoRules.map((rule) => [rule, "error"])),
-    "effecttsgo/missing-pipeable-signature": "off",
+    ...base.rules,
+    "anti-slop-effect-jev/error-as-value": "error",
+    "anti-slop-effect-jev/shallow-service": "error",
+    "anti-slop-effect-jev/swallow-without-capture": "error",
+    "anti-slop-effect-jev/read-then-write-race": "warn",
+    "anti-slop-effect-jev/cache-in-method": "off",
+    "anti-slop-martinfowler-jev/feature-envy": "warn",
+    "anti-slop-martinfowler-jev/primitive-obsession": "warn",
+    "anti-slop-martinfowler-jev/comments": "off",
   },
-});
+  overrides: [
+    ...baseOverrides,
+    {
+      files: testFiles,
+      rules: {
+        "anti-slop-effect-jev/error-as-value": "off",
+        "anti-slop-effect-jev/shallow-service": "off",
+        "anti-slop-effect-jev/swallow-without-capture": "off",
+        "anti-slop-effect-jev/test-cannot-fail": "error",
+      },
+    },
+  ],
+};
+
+export default config;
 ```
 
-This repository lints itself the same way in `oxlint.config.ts`.
+Use `jev/lint-changed.ts` to lint only the files changed in the working tree. Within those files, it asks Jev only about the functions you changed:
 
-### Optional LLM-judged Effect rules (Jev)
+```json
+{
+  "scripts": {
+    "lint:jev": "node tools/oxlint/anti-slop/jev/lint-changed.ts -c oxlint.jev.config.ts",
+    "lint:jev:full": "node tools/oxlint/anti-slop/jev/lint-changed.ts --all -c oxlint.jev.config.ts"
+  }
+}
+```
 
-`src/jev/` ships plain-English Effect review questions (`effectSourceJevRules`, `effectTestJevRules`) and `jev/plugin.ts`, an oxlint plugin named `anti-slop-effect-jev` with one rule per question, built with `createJevPlugin` from [Kyle Mistele's fork of `oxlint-plugin-jev`](https://github.com/K-Mistele/oxlint-plugin-jev). Each question's severity is set in the oxlint config, and all of a plugin's enabled rules share one request per file to [TypeSafe Jev](https://typesafe.ai) or, in judge mode, any AI SDK model. The fork is not on npm: this repository includes it as the `vendor/oxlint-plugin-jev` submodule, and the install skill vendors its built package to `tools/oxlint/oxlint-plugin-jev/` for a `file:` dependency:
+Without credentials, Jev prints a warning and skips its checks. Under `CI`, both plugins fail instead, because they set `ci: "fail"`. [docs/jev.md](docs/jev.md) covers judge mode, combining both plugins into one request per file, CI, and tuning. [docs/martinfowler.md](docs/martinfowler.md) covers the smells.
+
+## Diff rules
+
+Diff rules judge the whole branch for problems that span files or show up only in git history: `shotgun-surgery`, `divergent-change`, `duplicated-code`, and `scope-creep`. Every request costs money, so run them in `check:full` only, not on every save:
 
 ```sh
-node <skill-directory>/scripts/install.mjs --jev   # also copies the built fork
-npm install --save-dev ./tools/oxlint/oxlint-plugin-jev   # installs ai, @ai-sdk/typesafe-ai, zod, synckit
-export TYPESAFE_API_KEY="..."   # or FACTORY_API_KEY, or AI_GATEWAY_API_KEY
+node tools/oxlint/anti-slop/diff-rules/run.ts [--base <ref>] [--committed|--staged|--working] \
+  [--backend decision-model|llm-judge|command] [--model <name>] [--command <cmd>] [--purpose <text>] \
+  [--config <path>] [--fail] [--json]
 ```
 
-Register the plugin in the base config without enabling its rules, and enable them in an overlay that `check:fast` and `check:full` run, never in the editor config:
+The output looks like this:
 
-```ts
-// oxlint.config.ts
-jsPlugins: [{ name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" }],
+```text
+diff-rules: judged 3 changed file(s) in 1 request(s) against main (c842b87) with command (claude -p); 0 cached answer(s).
 
-// oxlint.jev.config.ts: { ...base, rules, overrides }
-rules: {
-  ...base.rules,
-  "anti-slop-effect-jev/error-as-value": "error",
-  "anti-slop-effect-jev/shallow-service": "error",
-  "anti-slop-effect-jev/read-then-write-race": "warn",
-  // ...one entry per question; "off" sends nothing
-},
-overrides: [
-  {
-    files: ["**/*.test.*", "**/*.spec.*", "test/**", "tests/**"],
-    rules: { "anti-slop-effect-jev/error-as-value": "off", /* ... */ "anti-slop-effect-jev/test-cannot-fail": "error" },
-  },
-],
+warn  shotgun-surgery  0.86 >= 0.75
+  Possibly Shotgun Surgery: one logical change spreads small, similar edits across many modules, and the next change of this kind will need the same edits again. Consider Move Function, Move Field, Combine Functions into Class, or Inline Function to gather the behavior in one place.
+  evidence: The new currency field is threaded by hand through three modules.
+  files: src/api/order.ts, src/db/order.ts, src/ui/order.ts
+
+diff-rules: 1 warning(s), 0 error(s).
 ```
 
-`jev/lint-changed.ts` runs oxlint on staged, unstaged, and untracked files and sets `JEV_CHANGED_ONLY=1`, so jev only asks about changed functions (`--all` lints everything with it off). See [docs/jev.md](docs/jev.md) for the full overlay, judge mode, and combining both jev plugins into one request per file.
+The diff rules have three backends:
 
-### Optional Martin Fowler smell rules
+- `decision-model`: TypeSafe Jev, reached directly, through Factory, or through AI Gateway.
+- `llm-judge`: a chat model through Factory, AI Gateway, or any OpenAI-compatible server.
+- `command`: any CLI agent, such as `claude -p` or `droid exec`.
 
-`martinfowler/index.ts` registers `anti-slop-martinfowler`: warn-level rules named after the code smells in *Refactoring* (2nd ed., ch. 3) whose messages name the refactoring to apply (`mysterious-name`, `long-function`, `long-parameter-list`, `global-data`, `mutable-data`, `repeated-switches`, `loops`, and `message-chains`, which is off by default). Some overlap other anti-slop rules on purpose so the bundle stands alone. `martinfowler/jev-rules.ts` is a matching jev preset for 12 smells that need judgement, and `martinfowler/jev-plugin.ts` turns it into the plugin `anti-slop-martinfowler-jev`, one rule per smell, meant for `"warn"` in the jev overlay. Each message reads "Possibly <Smell>: … Consider <Refactoring>." It needs the same jev fork. See [docs/martinfowler.md](docs/martinfowler.md).
+The model backends load the Vercel AI SDK from your `node_modules`. Install only the packages your backend needs; [docs/diff-rules.md](docs/diff-rules.md#dependencies) lists them. With no backend configured, the runner prints a warning and exits 0.
 
-```ts
-// oxlint.jev.config.ts, next to the Effect jev rules
-"anti-slop-martinfowler-jev/feature-envy": "warn",
-"anti-slop-martinfowler-jev/mysterious-name": "warn",
-"anti-slop-martinfowler-jev/comments": "off",
-```
+## Credentials
 
-Each jev plugin sends its own request per file, so enabling both costs up to two requests per file.
+Both Jev and the diff rules use the first credential they find.
 
-```ts
-jsPlugins: [{ name: "anti-slop-martinfowler", specifier: "./tools/oxlint/anti-slop/martinfowler/index.ts" }],
-rules: {
-  "anti-slop-martinfowler/global-data": "warn",
-  "anti-slop-martinfowler/long-function": "warn",
-  "anti-slop-martinfowler/long-parameter-list": "warn",
-  "anti-slop-martinfowler/loops": "warn",
-  "anti-slop-martinfowler/mutable-data": "warn",
-  "anti-slop-martinfowler/mysterious-name": "warn",
-  "anti-slop-martinfowler/repeated-switches": "warn",
-},
-```
-
-### Diff rules
-
-Diff rules judge a whole change set for smells that span files or need git history (shotgun surgery, divergent change, duplicated code, scope creep). The judge is a decision model (TypeSafe Jev, directly, through Factory, or through AI Gateway), a chat model (Factory, AI Gateway, or any OpenAI-compatible server), or a CLI agent such as `claude -p` or `droid exec`. The model backends use the [Vercel AI SDK](https://ai-sdk.dev), so install it next to the vendored files when you use them; the CLI backend needs only Node:
-
-```sh
-npm install --save-dev ai@7.0.173 zod@4.6.7 @ai-sdk/typesafe-ai@3.0.40   # decision model, direct
-npm install --save-dev @ai-sdk/openai-compatible@3.0.92                  # chat model at LLM_JUDGE_BASE_URL
-npm install --save-dev @ai-sdk/anthropic@4.0.105                          # chat model through Factory (FACTORY_API_KEY)
-```
-
-They run in `check:full`, not `check:fast`:
-
-```sh
-node tools/oxlint/anti-slop/diff-rules/run.ts [--base <ref>] [--committed|--staged|--working] [--fail] [--json]
-```
-
-See [docs/diff-rules.md](docs/diff-rules.md).
+| Variable | Used by | Notes |
+| --- | --- | --- |
+| `TYPESAFE_API_KEY` (or `TYPESAFE_AI_API_KEY`) | Jev, diff rules (`decision-model`) | Get a key at <https://console.typesafe.ai>. |
+| `FACTORY_API_KEY`, optional `FACTORY_API_BASE_URL` | Jev, diff rules (`decision-model`; `llm-judge` when `LLM_JUDGE_MODEL` is set) | The decision endpoint accepts only aliases such as `jev-latest`. The organization needs the `decision_models` flag. The judge goes through Factory's Anthropic proxy and needs `@ai-sdk/anthropic`. |
+| `AI_GATEWAY_API_KEY` | Jev (gateway model ids, judge mode), diff rules (both model backends) | Uses AI Gateway model ids, such as `typesafe-ai/jev` or `openai/gpt-5-mini`. |
+| `LLM_JUDGE_BASE_URL` with `LLM_JUDGE_MODEL`, optional `LLM_JUDGE_API_KEY` | Diff rules (`llm-judge`) | Works with any OpenAI-compatible server. Needs `@ai-sdk/openai-compatible`. |
+| `--command`, `ANTI_SLOP_DIFF_RULES_COMMAND`, or `command` in the config | Diff rules (`command`) | The command reads the prompt on stdin and prints JSON. It needs no packages. |
 
 ## Rules
 
-### Generic rules
-
-- `max-ternary-depth` — limits ternary expression chains to two levels by default; configure `maxDepth` to change the limit.
-- `no-array-filter-map` — rejects adjacent eager array filter/map passes while allowing lazy iterator pipelines.
-- `no-reduce-accumulator-copy` — rejects non-spread accumulator copies inside reducers; complements native `oxc/no-accumulating-spread`.
-- `no-chained-type-assertions` — rejects nested `as` and angle-bracket assertions that fabricate evidence; chains made only of `as const` remain valid.
-- `no-conditional-spread` — rejects ternary and logical expressions in object, array, call, and JSX spreads.
-- `no-disabled-type-assertion-rules` — rejects inline `oxlint-disable`/`eslint-disable` comments that turn off a type-assertion rule (`anti-slop/no-chained-type-assertions`, `anti-slop/no-widen-then-assert`, `anti-slop/require-safety-comment-for-type-assertion`, `effecttsgo/unsafe-effect-type-assertion`, `typescript/consistent-type-assertions`, `typescript/no-unsafe-type-assertion`), and disable comments that name no rule at all. Configure `additionalRules` to protect more rules.
-- `no-known-value-widening` — rejects known expressions flowing into explicit `unknown`, `object`, anonymous-object, or open-dictionary targets, including known arguments passed to local `unknown` type predicates. Empty dictionary accumulators and finite-key `Record` targets remain valid.
-- `no-module-mocking` — rejects Vitest and Jest `mock`, `doMock`, and `unstable_mockModule` calls in favor of real dependency seams.
-- `no-object-parameters` — rejects `object`, unions containing it, and scoped or transparent generic aliases that resolve to it on function inputs.
-- `no-reflect-apply` — rejects global `Reflect.apply` in favor of typed function calls.
-- `no-reflect-get` — rejects global `Reflect.get` in favor of typed property access or boundary parsing.
-- `no-reprovide-ambient-service` — rejects yielding an Effect service only to provide that same value back into a nested operation.
-- `no-runtime-typeof` — requires boundary parsing instead of ad hoc `typeof` narrowing. Existence probes against the string `"undefined"` are allowed, and type predicates can be enabled explicitly.
-- `no-shape-in-symbol-names` — rejects the case-insensitive substring `shape` in locally owned symbol names while allowing static member names such as Zod's `schema.shape` that cannot be renamed locally.
-- `no-unknown-parameters` — rejects `unknown` and unions containing it on function inputs except the explicit `cause` convention and the exact subject of a type predicate.
-- `no-unknown-returns` — rejects explicit function contracts that resolve to `unknown`, `Promise<unknown>`, or `PromiseLike<unknown>`, including scoped and transparent generic aliases.
-- `no-unknown-type-aliases` — rejects scoped and transparent generic aliases whose resolved type is `unknown`.
-- `no-unsafe-dictionary-type` — rejects dictionary value contracts based on `unknown`, `any`, `object`, `{}`, and semantic equivalents. Generic constraints such as `T extends Record<string, unknown>` are allowed.
-- `no-widen-then-assert` — rejects immutable local flows that widen known evidence to `unknown`, `any`, `object`, or a broad record and later assert it back to a narrower type.
-- `require-readable-spacing` — autofixes missing blank lines between top-level declarations, around multiline bindings, before control flow/returns, and after blocks; preserves compact local bindings, imports, and overload groups.
-- `require-safety-comment-for-type-assertion` — requires each non-const assertion to have a nearby, non-empty invariant justification. Marker prefixes are configurable and default to `SAFETY`.
-
-### Effect rules
-
-- `no-manual-effect-error-tag` — rejects manual `_tag` comparisons and switches inside broad `Effect.catch`, `Effect.catchAll`, and `Effect.catchIf` handlers in favor of tagged error handlers.
-- `no-manual-tag-comparison` — rejects direct `_tag` comparisons and `_tag` switches in favor of `Match`, `Predicate.isTagged`, or tagged-enum matching.
-- `no-manual-tagged-construction` — rejects literal `_tag` object construction in favor of Schema, tagged class/error, or `Data.taggedEnum` constructors, including `_tag` object patterns passed to `Match.when` and `Match.not`, and literal `_tag` class fields.
-- `no-ordie-in-service-construction` — rejects `Effect.orDie`/`Effect.orDieWith` while a service is constructed: in its options or static `make`, its static `layer*` members, and `Layer.effect`/`Layer.scoped`/`Layer.unwrap*` arguments. Construction stops at operation boundaries (functions other than `Effect.gen` generators and `Effect.suspend`/`Effect.sync` thunks, `Effect.fn` definitions, object-literal properties, and effects a generator defines without yielding). `Layer.orDie` is rejected anywhere. Test and spec files are skipped.
-- `no-service-parameters` — rejects function, method, and function-type parameters typed `Context.Context`, `ManagedRuntime.ManagedRuntime`, `Layer.Layer`, or a `Context.Service` class declared in the same file. Layer combinators (functions with a `Layer.Layer` return type or an expression body that is a `Layer.*` call or pipe) may take layers, and callbacks passed directly to an Effect API such as `Effect.contextWith` are skipped. Test and spec files are skipped.
-- `no-test-code-in-src` — in files under a source directory (default `src`), rejects test and spec files and files inside a test directory (default `test`, `tests`, `__tests__`), relative imports and re-exports that pass through a test directory, and exported declarations, export specifiers, and static class members whose names match a test-double pattern such as `layerTest`, `FakeClock`, `WidgetsMock`, or `makeStubStore`. `layerFixtures` stand-ins and domain names such as `TestConnection` or `hitTest` are allowed by default. Configure `sourceDirectories`, `testDirectories`, and `testNamePatterns` (regular-expression strings).
-- `no-manual-tagged-type` — rejects `_tag` properties written by hand in `type` and `interface` declarations. Define the value with a Schema or Data tagged constructor and infer the type from it, e.g. `export type X = typeof X.Type`. Also rejects `_tag` in inline type literals, including generic constraints such as `<A extends { readonly _tag: string }>`.
-- `no-service-constructor-imports` — rejects named `make<CapabilityName>` imports from relative project modules outside `*.test.*` and `*.spec.*` files. Runtime callers should import the owning Layer and yield the contextual service instead. Package and path-alias imports, default imports, and static constructors such as `WorkspaceName.make` are outside the rule.
-- `prefer-effect-match` — rejects chained literal ternaries over the same value in favor of Effect's `Match` API.
-- `prefer-tagged-error-handling` — rejects `Predicate.isTagged` checks on the error inside broad `Effect.catch`, `Effect.catchAll`, and `Effect.catchIf` handlers in favor of `Effect.catchTag`/`Effect.catchTags`, or `Effect.catchReason`/`Effect.catchReasons` when the check is on `error.reason`. Direct `_tag` comparisons stay with `no-manual-effect-error-tag`.
-- `prefer-yield-service` — rejects `const ctx = yield* Effect.context<...>()` when `ctx` is later passed to `Effect.provide`, `Effect.provideContext`, `Layer.provide`, or `Layer.succeedContext`. Yield each service instead and let requirements flow through R. Capturing the context for a runtime bridge such as `Effect.runForkWith(ctx)` stays valid.
-- `require-cause-when-narrowing` — rejects `Effect.mapError`, `Effect.catch`, `Effect.catchAll`, `Effect.catchCause`, and `Effect.orElse` handlers that ignore their error and construct a new one (`new X(...)` or `X.make(...)`, returned, yielded, or passed to `Effect.fail`) without a `cause` property, unless an earlier step of the same pipe is `Effect.tapError`, `tapErrorCause`, `tapCause`, or `tapErrorTag`. `catchTag`/`catchTags` are outside the rule.
-- `require-operation-span` — requires each operation in the object a `Context.Service` make returns (directly or through `X.of({...})`) to contain `Effect.fn("name")` or `Effect.withSpan(...)`, or to call a same-file function that does. Operations are functions that return an `Effect.*` expression and `Effect`-valued properties; plain helpers, delegations to another service, streams, and values are skipped. Test and spec files are skipped.
-- `require-service-make-layer` — requires each `Context.Service` class to define `make` (options or static) and `static readonly layer = Layer.effect(this, this.make)` (optionally piped, or `(options) => Layer.effect(this, this.make(options))`). Other static `layer*` members that build this service must derive from its `layer` or `make`. Outside the class, `Layer.effect(X, ...)` must pass `X.make` or `X.make(...)`; tags imported from `effect`/`@effect/*` are exempt. Tag-only services with no make and no layers (request-scoped values, host bindings) are allowed; set `allowTagOnly: false` to require a make for them too. Test and spec files are skipped.
-
-### Analysis boundaries
-
-The rules use Oxlint's ESTree and lexical-scope APIs rather than a TypeScript type checker. They resolve same-file aliases—including block-scoped aliases, forward references, and transparent generic aliases—but do not infer imported type definitions or cross-file call signatures. Rules that inspect calls therefore document when enforcement is intentionally local.
-
-## Violation examples
-
-Each snippet below is rejected by the named rule.
-
-### `max-ternary-depth`
-
-```ts
-const value = first ? one : second ? two : third ? three : fallback;
-```
-
-### `no-array-filter-map`
-
-```ts
-const users: User[] = loadUsers();
-const emails = users.filter(user => user.active).map(user => user.email);
-const found = users.map(lookup).filter(value => value !== undefined);
-```
-
-Prefer lazy iterator helpers where the target runtime supports them:
-
-```ts
-const emails = users.values()
-  .filter(user => user.active)
-  .map(user => user.email)
-  .toArray();
-```
-
-A single `flatMap(user => user.active ? [user.email] : [])` or a reducer that pushes into a fresh local array is also allowed. Iterator helpers avoid intermediate arrays and per-item wrapper arrays, but are not guaranteed to be faster. Check runtime support; TypeScript library declarations do not polyfill them.
-
-This AST/scope rule recognizes array literals, direct array/tuple annotations, immutable local aliases, and supported array-preserving method chains. Unknown receivers (including imported factory results and unannotated parameters), type aliases, and property-based array types are not inferred. Iterator pipelines are not flagged. Both `filter().map()` and `map().filter()` are covered, regardless of predicate. There is no autofix: callback ordering, indexes, `thisArg`, sparse arrays, and truthiness filtering must be reviewed before changing APIs.
-
-### `no-reduce-accumulator-copy`
-
-```ts
-items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});
-items.reduce((acc, item) => acc.concat([item]), []);
-items.reduce((acc, item) => {
-  const next = acc.slice();
-  next.push(item);
-  return next;
-}, []);
-```
-
-Instead, mutate a fresh, locally owned accumulator and return it:
-
-```ts
-items.reduce((acc, item) => {
-  acc.push(item);
-  return acc;
-}, []);
-```
-
-`Object.assign(acc, item)` is also allowed. Copying individual input items is not copying accumulated state.
-
-The rule covers inline `reduce`/`reduceRight` callbacks, including index parameters, and immutable local accumulator aliases. It detects global `Object.assign` with an object-literal target and the accumulator as a source, global `Array.from(acc)`, and array accumulator calls to `concat`, `slice`, `toSpliced`, `toSorted`, `toReversed`, and `with`. Array copy methods require local array evidence for the initial value so string concatenation and unknown custom collections are not flagged. Like the native rule, reducer method names are syntactic evidence, not proof of the receiver's runtime type. Named callbacks, nested functions, indirect copy helpers, nested accumulator properties, and reassigned aliases are outside its scope. Copying a bounded accumulator is not necessarily quadratic, but these patterns are rejected because growing accumulators can be.
-
-Enable native `oxc/no-accumulating-spread` alongside it for array/object spreads in reducers and supported loops. Neither rule proves that every possible quadratic reduction is absent. No automatic mutation rewrite is provided because accumulator ownership cannot be established syntactically.
-
-### `no-chained-type-assertions`
-
-```ts
-const user = input as object as User;
-```
-
-### `no-conditional-spread`
-
-```ts
-const options = {
-  ...(timeout ?? defaults),
-};
-```
-
-### `no-disabled-type-assertion-rules`
-
-```ts
-// oxlint-disable-next-line typescript/consistent-type-assertions
-const id = value as UserId;
-```
-
-Remove the cast, or add a file-level override with its reason in the lint configuration. A disable comment that names no rule (`// oxlint-disable-next-line`) is rejected too, because it silently turns these rules off. Protect more rules with `additionalRules`:
-
-```json
-{
-  "anti-slop/no-disabled-type-assertion-rules": [
-    "error",
-    { "additionalRules": ["local/no-type-assertion"] }
-  ]
-}
-```
-
-### `no-known-value-widening`
-
-```ts
-const handlers: Record<string, Handler> = {
-  start: startHandler,
-};
-```
-
-This discards the known `start` key. Preserve inference or use `satisfies Record<string, Handler>` instead.
-
-Known values must not be widened back to `unknown` through a local type predicate:
-
-```ts
-function isUser(value: unknown): value is User {
-  return UserSchema.safeParse(value).success;
-}
-
-declare const user: User;
-isUser(user);
-```
-
-Call the predicate at the unparsed boundary, while the argument is still `unknown`.
-
-### `no-module-mocking`
-
-```ts
-vi.mock("./user-store");
-```
-
-### `no-object-parameters`
-
-```ts
-function save(value: object) {}
-```
-
-### `no-reflect-apply`
-
-```ts
-const value = Reflect.apply(operation, owner, args);
-```
-
-### `no-reflect-get`
-
-```ts
-const value = Reflect.get(owner, key);
-```
-
-### `no-runtime-typeof`
-
-```ts
-if (typeof input === "string") {
-  useName(input);
-}
-```
-
-Schema-free projects can permit `typeof` checks directly inside type predicate and
-assertion functions while continuing to reject ad hoc checks elsewhere:
-
-```json
-{
-  "anti-slop/no-runtime-typeof": [
-    "error",
-    { "allowInTypeGuards": true }
-  ]
-}
-```
-
-The option defaults to `false`. Existence probes such as `typeof document === "undefined"` are always allowed because they establish whether a binding exists rather than narrow its representation.
-
-### `no-shape-in-symbol-names`
-
-```ts
-interface UserShape {
-  id: string;
-}
-```
-
-Static member reads such as `schema.shape` are allowed because the member name belongs to the value's owner and cannot be renamed locally.
-
-### Effect: `no-service-constructor-imports`
-
-```ts
-import { makeIssueService } from "./issue-service.ts";
-```
-
-Import the owning Layer and yield `IssueService` instead. Focused `*.test.*` and `*.spec.*` files may import the constructor directly.
-
-### Effect: `require-service-make-layer`
-
-```ts
-export class AppRegistry extends Context.Service<AppRegistry, AppRegistryShape>()("@app/AppRegistry") {}
-
-export const AppRegistryLive = Layer.effect(AppRegistry, Effect.gen(function* () {
-  const store = yield* AppStore;
-  return { find: (id: AppId) => store.find(id) };
-}));
-```
-
-Move the constructor into the class and derive the layer from it:
-
-```ts
-export class AppRegistry extends Context.Service<AppRegistry, AppRegistryShape>()("@app/AppRegistry", {
-  make: Effect.gen(function* () {
-    const store = yield* AppStore;
-    return { find: Effect.fn("AppRegistry.find")(function* (id: AppId) { return yield* store.find(id); }) };
-  }),
-}) {
-  static readonly layer = Layer.effect(this, this.make);
-  static readonly layerSelfBinding = AppRegistry.layer.pipe(Layer.provide(selfBinding));
-}
-```
-
-### Effect: `no-test-code-in-src`
-
-```ts
-// src/widgets.ts
-export const layerTest = WidgetService.layer.pipe(Layer.provide(FakeProvider));
-```
-
-Move it to `test/support/layers.ts` and build it from the production class there.
-
-### Effect: `no-service-parameters`
-
-```ts
-const listWidgets = (input: ListInput, context: Context.Context<WidgetProvider>) =>
-  fetchWidgets(input).pipe(Effect.provide(context));
-```
-
-`yield* WidgetProvider` inside the operation instead and pass only plain values.
-
-### Effect: `prefer-yield-service`
-
-```ts
-const services = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
-return { build: (dir: string) => runBuild(dir).pipe(Effect.provideContext(services)) };
-```
-
-Yield `FileSystem.FileSystem` and `Path.Path` where they are used and let `runBuild`'s requirements reach the layer.
-
-### Effect: `require-cause-when-narrowing`
-
-```ts
-decode(text).pipe(Effect.mapError(() => BadRequest.make({ reason: "Invalid JSON" })));
-```
-
-Keep the original error: `Effect.mapError((cause) => BadRequest.make({ reason: "Invalid JSON", cause }))`, or put `Effect.tapError(Effect.logError)` before the narrowing step.
-
-### Effect: `require-operation-span`
-
-```ts
-make: Effect.gen(function* () {
-  const store = yield* Store;
-  return { find: (id: string) => store.find(id).pipe(Effect.map(toWidget)) };
-}),
-```
-
-Write `find: Effect.fn("Widgets.find")(function* (id: string) { ... })`, or end the pipe with `Effect.withSpan("Widgets.find", { attributes: { id } })`.
-
-### Effect: `no-ordie-in-service-construction`
-
-```ts
-make: Effect.gen(function* () {
-  const token = yield* Config.redacted("API_TOKEN").pipe(Effect.orDie);
-  return { token };
-}),
-```
-
-Leave the `ConfigError` (or a Schema.TaggedError that classifies it) in the layer's error channel and handle it where the runtime is built. `Layer.orDie` is rejected for the same reason.
-
-### Effect: tagged values and matching
-
-Direct tag checks are rejected by `no-manual-tag-comparison`:
-
-```ts
-if (result._tag === "Ready") useReady(result);
-```
-
-Use `Predicate.isTagged` for a predicate or `Match` for branching:
-
-```ts
-if (Predicate.isTagged("Ready")(result)) useReady(result);
-```
-
-Literal tag objects are rejected by `no-manual-tagged-construction`:
-
-```ts
-const result = { _tag: "Ready", value };
-```
-
-Use the existing Schema, tagged class/error, or `Data.taggedEnum` constructor instead, such as `Ready.make({ value })`. Object patterns with `_tag` passed to `Match.when` and `Match.not` are rejected too; use `Match.tag`/`Match.tags`.
-
-Manual tag branching in broad catch handlers is rejected by `no-manual-effect-error-tag`:
-
-```ts
-program.pipe(
-  Effect.catch((error) =>
-    error._tag === "NotFound" ? recover : Effect.fail(error)
-  )
-);
-```
-
-Use the selective error operator:
-
-```ts
-program.pipe(Effect.catchTag("NotFound", () => recover));
-```
-
-For a tagged `error.reason`, use `Effect.catchReason` or `Effect.catchReasons`.
-
-`Predicate.isTagged` checks on the error in broad catch handlers are rejected by `prefer-tagged-error-handling`:
-
-```ts
-program.pipe(
-  Effect.catch((error) =>
-    Predicate.isTagged(error, "NotFound") ? recover : Effect.fail(error)
-  )
-);
-```
-
-Use `Effect.catchTag("NotFound", () => recover)` here as well.
-
-Repeated literal ternaries over the same value are rejected by `prefer-effect-match`:
-
-```ts
-const label = kind === "a" ? "A" : kind === "b" ? "B" : "Other";
-```
-
-Use `Match`:
-
-```ts
-const label = Match.value(kind).pipe(
-  Match.when("a", () => "A"),
-  Match.when("b", () => "B"),
-  Match.orElse(() => "Other")
-);
-```
-
-These rules are syntactic. They recognize direct `Effect.catch*` and `Match.when`/`Match.not` calls under those exact identifiers and do not resolve import aliases or verify that similarly named objects came from Effect. `prefer-effect-match` compares the source text of the repeatedly tested expression; it does not infer its type or prove exhaustiveness.
-
-### `no-unknown-parameters`
-
-```ts
-function handle(input: unknown) {}
-```
-
-A type predicate may accept `unknown` for the parameter it narrows; other `unknown`
-parameters on the same function remain rejected.
-
-### `no-unknown-returns`
-
-```ts
-function loadUser(): unknown {
-  return input;
-}
-```
-
-### `no-unknown-type-aliases`
-
-```ts
-type ExternalValue = unknown;
-```
-
-### `no-unsafe-dictionary-type`
-
-```ts
-type Metadata = Record<string, unknown>;
-type OtherMetadata = { [key: string]: object };
-```
-
-### `no-widen-then-assert`
-
-```ts
-const loaded: User = loadUser();
-const stored: unknown = loaded;
-const user = stored as User;
-```
-
-### `require-readable-spacing`
-
-```ts
-export const first = 1;
-/** Documentation stays attached to second. */
-export const second = 2;
-```
-
-Autofix inserts a blank line before the documentation. Inside functions, adjacent short variable declarations stay grouped, while multiline bindings and control-flow boundaries receive spacing. Adjacent function overload signatures and their implementation remain grouped. Existing blank lines are never removed. The rule takes no options; edit the vendored policy if your team's preferences differ.
-
-Run `oxlint --fix` (or `vp lint --fix`), then your formatter, then lint again. The rule inserts whitespace only; it does not add braces, wrap expressions, sort imports, or infer every logical group. Keep indentation and wrapping with the formatter rather than enabling a competing stylistic preset.
-
-The comment-aware engine is [vendored from ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under MIT. Copy its `LICENSE` and provenance along with the code; no third-party plugin dependency is needed.
-
-### `require-safety-comment-for-type-assertion`
-
-```ts
-const userId = value as UserId;
-```
-
-Add a specific justification immediately before a necessary assertion:
-
-```ts
-// SAFETY: parseUserId validated the identifier before branding it.
-const userId = value as UserId;
-```
-
-`SAFETY` remains the default marker. Comments immediately above exported declarations are recognized. Repositories with an established convention can configure one or more alternatives; every marker must still be followed by a colon and a non-empty justification:
-
-```json
-{
-  "anti-slop/require-safety-comment-for-type-assertion": [
-    "error",
-    { "markers": ["INVARIANT", "SAFETY"] }
-  ]
-}
-```
+### Core (`anti-slop`, error)
+
+| Rule | What it checks |
+| --- | --- |
+| [`max-ternary-depth`](src/rules/max-ternary-depth.ts) | Limit ternary expression chains to a configurable depth. |
+| [`no-array-filter-map`](src/rules/no-array-filter-map.ts) | Disallow adjacent array filter/map passes in favor of lazy iterator helpers or a single transformation. |
+| [`no-chained-type-assertions`](src/rules/no-chained-type-assertions.ts) | Disallow chained TypeScript as and angle-bracket assertions, including parenthesized chains. |
+| [`no-conditional-spread`](src/rules/no-conditional-spread.ts) | Disallow spreading ternary and logical expressions. Build the value explicitly instead. |
+| [`no-disabled-type-assertion-rules`](src/rules/no-disabled-type-assertion-rules.ts) | Disallow inline disable comments for the type-assertion rules, and disable comments that name no rule. |
+| [`no-known-value-widening`](src/rules/no-known-value-widening.ts) | Disallow syntactically established values from flowing into explicitly broad or anonymous target types that discard useful evidence. |
+| [`no-module-mocking`](src/rules/no-module-mocking.ts) | Disallow Vitest and Jest module mocking; tests must replace dependencies through real interfaces. |
+| [`no-object-parameters`](src/rules/no-object-parameters.ts) | Disallow object function parameters; inputs must use an owner-provided type and be parsed at their boundary. |
+| [`no-reduce-accumulator-copy`](src/rules/no-reduce-accumulator-copy.ts) | Disallow copying growing reducer accumulators with Object.assign, Array.from, or array copy methods. |
+| [`no-reflect-apply`](src/rules/no-reflect-apply.ts) | Disallow Reflect.apply; call typed functions directly or model dynamic dispatch behind an interface. |
+| [`no-reflect-get`](src/rules/no-reflect-get.ts) | Disallow Reflect.get; use typed property access or parse dynamic input into a domain type. |
+| [`no-reprovide-ambient-service`](src/rules/no-reprovide-ambient-service.ts) | Disallow re-providing an Effect service that was yielded directly from the surrounding environment. |
+| [`no-runtime-typeof`](src/rules/no-runtime-typeof.ts) | Disallow runtime typeof checks; external values must be decoded into meaningful types at their I/O boundary. |
+| [`no-shape-in-symbol-names`](src/rules/no-shape-in-symbol-names.ts) | Disallow the case-insensitive substring "shape" in JavaScript, TypeScript, private, and JSX symbol names. |
+| [`no-unknown-parameters`](src/rules/no-unknown-parameters.ts) | Disallow explicitly unknown function parameters except `cause` and type-predicate subjects; decode unknown input at its I/O boundary instead. |
+| [`no-unknown-returns`](src/rules/no-unknown-returns.ts) | Disallow functions whose explicit return contract is `unknown` or `Promise<unknown>`. |
+| [`no-unknown-type-aliases`](src/rules/no-unknown-type-aliases.ts) | Disallow type aliases whose resolved type is unknown; unknown must remain visible at an allowed boundary. |
+| [`no-unsafe-dictionary-type`](src/rules/no-unsafe-dictionary-type.ts) | Disallow object-dictionary contracts whose direct value type is unknown, any, object, {}, or a union/alias containing one of those escape hatches. |
+| [`no-widen-then-assert`](src/rules/no-widen-then-assert.ts) | Disallow local const flows that explicitly widen a known value before asserting the widened binding to a narrower type. |
+| [`require-readable-spacing`](src/rules/require-readable-spacing.ts) | Require readable spacing between declarations and logical statement groups. |
+| [`require-safety-comment-for-type-assertion`](src/rules/require-safety-comment-for-type-assertion.ts) | Require a nearby SAFETY comment for every TypeScript type assertion except const assertions. |
+
+### Effect (`anti-slop-effect`, error)
+
+| Rule | What it checks |
+| --- | --- |
+| [`no-manual-effect-error-tag`](src/effect/rules/no-manual-effect-error-tag.ts) | Use Effect tagged error handlers instead of manually branching on `_tag` in a catch handler. |
+| [`no-manual-tag-comparison`](src/effect/rules/no-manual-tag-comparison.ts) | Use Effect Match or Predicate helpers instead of manually branching on `_tag`. |
+| [`no-manual-tagged-construction`](src/effect/rules/no-manual-tagged-construction.ts) | Construct tagged values with their existing Effect constructor instead of writing `_tag` manually. |
+| [`no-manual-tagged-type`](src/effect/rules/no-manual-tagged-type.ts) | Derive tagged types from a tagged Schema or Data constructor instead of declaring `_tag` in a type or interface. |
+| [`no-ordie-in-service-construction`](src/effect/rules/no-ordie-in-service-construction.ts) | Disallow `Effect.orDie` while constructing a service (its make, its static layers, or Layer.effect/unwrap arguments) and `Layer.orDie` anywhere. |
+| [`no-service-constructor-imports`](src/effect/rules/no-service-constructor-imports.ts) | Disallow project-local `make<CapabilityName>` imports outside test and spec files. |
+| [`no-service-parameters`](src/effect/rules/no-service-parameters.ts) | Disallow function parameters typed as Context.Context, ManagedRuntime.ManagedRuntime, Layer.Layer, or a Context.Service declared in the same file. |
+| [`no-test-code-in-src`](src/effect/rules/no-test-code-in-src.ts) | Disallow test files, imports from test directories, and test-named exports such as `layerTest` inside production source directories. |
+| [`prefer-effect-match`](src/effect/rules/prefer-effect-match.ts) | Use Match from Effect for chained literal ternaries over the same value. |
+| [`prefer-tagged-error-handling`](src/effect/rules/prefer-tagged-error-handling.ts) | Use Effect tagged error handlers instead of `Predicate.isTagged` checks in a broad catch handler. |
+| [`prefer-yield-service`](src/effect/rules/prefer-yield-service.ts) | Disallow `yield* Effect.context()` results that are passed back to Effect.provide, Effect.provideContext, Layer.provide, or Layer.succeedContext. |
+| [`require-cause-when-narrowing`](src/effect/rules/require-cause-when-narrowing.ts) | Require Effect.mapError/catch/catchAll/catchCause/orElse handlers that construct a new error to keep the original error as `cause`. |
+| [`require-operation-span`](src/effect/rules/require-operation-span.ts) | Require each operation returned by a Context.Service make to be traced with Effect.fn("name") or Effect.withSpan. |
+| [`require-service-make-layer`](src/effect/rules/require-service-make-layer.ts) | Require Context.Service classes to define `make` and `static layer = Layer.effect(this, this.make)`, with variant layers derived from them. |
+
+### Martin Fowler AST (`anti-slop-martinfowler`, warn)
+
+| Rule | What it checks |
+| --- | --- |
+| [`global-data`](src/martinfowler/rules/global-data.ts) | Flag exported mutable module state: exported `let`/`var`, or exported objects, arrays, Maps, and Sets mutated in the file (Refactoring, Global Data). |
+| [`long-function`](src/martinfowler/rules/long-function.ts) | Flag functions whose own statements or lines exceed a threshold (Refactoring, Long Function). |
+| [`long-parameter-list`](src/martinfowler/rules/long-parameter-list.ts) | Flag functions with more positional parameters than a threshold (Refactoring, Long Parameter List). |
+| [`loops`](src/martinfowler/rules/loops.ts) | Flag loops that build an array, object, Map, or Set declared outside the loop (Refactoring, Loops). |
+| [`message-chains`](src/martinfowler/rules/message-chains.ts) | Flag property and getter chains that navigate through more objects than a threshold (Refactoring, Message Chains). Off by default. |
+| [`mutable-data`](src/martinfowler/rules/mutable-data.ts) | Flag module-level `let`/`var` bindings reassigned inside functions (Refactoring, Mutable Data). Exported bindings are reported by global-data instead. |
+| [`mysterious-name`](src/martinfowler/rules/mysterious-name.ts) | Flag top-level functions whose name is a bare generic verb, or that only alias another function (Refactoring, Mysterious Name). |
+| [`repeated-switches`](src/martinfowler/rules/repeated-switches.ts) | Flag a discriminant expression that is switched on, or compared in if/else or ternary chains, over the same cases in several places in one file (Refactoring, Repeated Switches). |
+
+### Jev and diff rules
+
+| Plugin or runner | Rules | Docs |
+| --- | --- | --- |
+| `anti-slop-effect-jev` ([`src/jev/effect-rules.ts`](src/jev/effect-rules.ts)) | Source: `single-use-abstraction`, `error-as-value`, `shallow-service`, `swallow-without-capture`, `unbounded-retry`, `network-call-in-transaction`, `read-then-write-race`, `unbounded-fanout`, `decode-after-status`, `cache-in-method`. Tests: `test-cannot-fail`. | [docs/jev.md](docs/jev.md) |
+| `anti-slop-martinfowler-jev` ([`src/martinfowler/jev-rules.ts`](src/martinfowler/jev-rules.ts)) | `mysterious-name`, `feature-envy`, `data-clumps`, `primitive-obsession`, `middle-man`, `lazy-element`, `speculative-generality`, `temporary-field`, `insider-trading`, `data-class`, `comments`, `repeated-switches` | [docs/martinfowler.md](docs/martinfowler.md) |
+| `diff-rules/run.ts` ([`src/diff-rules/rules.ts`](src/diff-rules/rules.ts)) | `shotgun-surgery`, `divergent-change`, `duplicated-code`, `scope-creep` | [docs/diff-rules.md](docs/diff-rules.md) |
+
+The repository also ships an [`effect-program-design`](skills/effect-program-design/SKILL.md) skill. It holds the Effect review policy that the Effect rules and the Jev questions encode.
 
 ## Development
 
-```bash
-git submodule update --init
+```sh
+git clone --recurse-submodules https://github.com/K-Mistele/anti-slop
 pnpm install
-pnpm build:jev
-pnpm check
+pnpm build:jev   # builds the vendor/oxlint-plugin-jev submodule
+pnpm check       # oxlint, every RuleTester suite, typecheck, and the skill-asset drift check
 ```
 
-`src/` is canonical. `vendor/oxlint-plugin-jev` is a submodule of the jev fork, pinned to a commit on its `main` (`741b19b`); after moving the pin, run `pnpm build:jev` and `pnpm sync:skill-assets`. After changing production source, run `pnpm sync:skill-assets`; CI checks that the skill's bundled copies of `src/` and of the built fork remain identical. `pnpm check` runs Oxlint, every RuleTester suite, TypeScript typechecking, and the skill-asset drift check.
+`src/` is the canonical source. After you change it or move the submodule pin, run `pnpm sync:skill-assets` so the copies bundled in `skills/install-anti-slop/assets/` stay identical.
 
 ## License
 
-MIT
+MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license.
