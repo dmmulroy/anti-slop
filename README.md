@@ -2,12 +2,16 @@
 
 Oxlint rules that reject the low-evidence TypeScript that coding agents tend to write: casts without a stated invariant, `unknown` leaking through contracts, conditional spreads, module mocks, and similar patterns. The diagnostics tell the agent what to do instead.
 
-anti-slop was created by [Dillon Mulroy](https://github.com/dmmulroy) at [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop). This fork, maintained by [Kyle Mistele](https://github.com/K-Mistele), keeps his core rules and adds four things:
+anti-slop was created by [Dillon Mulroy](https://github.com/dmmulroy) at [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop). This fork, maintained by [Kyle Mistele](https://github.com/K-Mistele), keeps his core rules and adds:
 
-- more Effect rules;
-- a Martin Fowler code-smell bundle;
-- LLM-judged [Jev](https://typesafe.ai) rules;
-- diff rules that judge a whole change set.
+- **An oxlint Jev plugin with 23 LLM-judged rules.** Each rule is a plain-English yes/no question that a pattern-based linter can't answer, asked of a [Jev](https://typesafe.ai) decision model or any AI SDK chat model. There are two sets:
+  - `anti-slop-effect-jev`: 11 Effect review questions, such as `shallow-service`, `swallow-without-capture`, `read-then-write-race`, `network-call-in-transaction`, and, for tests, `test-cannot-fail`.
+  - `anti-slop-martinfowler-jev`: 12 of Martin Fowler's code smells from *Refactoring*, such as `feature-envy`, `data-clumps`, `primitive-obsession`, and `middle-man`.
+- More Effect AST rules (`anti-slop-effect`).
+- A Martin Fowler AST code-smell bundle (`anti-slop-martinfowler`).
+- Diff rules that judge a whole change set, for smells such as shotgun surgery and scope creep.
+
+See [Jev rules](#jev-rules-llm-judged) and the [rule catalog](#jev-and-diff-rules).
 
 The plugin is meant to be vendored, not installed from npm. Copy the source into your repository, then treat the rules as your own code: read them, change them, and keep them in sync with your team's standards.
 
