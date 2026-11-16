@@ -93,13 +93,17 @@ function typeSafeBaseURL() {
 	return env("TYPESAFE_AI_BASE_URL").replace(/\/+$/, "") || DEFAULT_TYPESAFE_URL;
 }
 const hasGatewayCredentials = () => env("AI_GATEWAY_API_KEY") !== "" || env("VERCEL_OIDC_TOKEN") !== "";
-/** Picks the backend for a rule list, or names the credential that is missing. */
+/** Named in the warning when no Jev credential of any kind is set. */
+const NO_JEV_CREDENTIALS = "no Jev credentials: TYPESAFE_API_KEY, TYPESAFE_AI_API_KEY, and AI_GATEWAY_API_KEY are all unset";
+/** The AI Gateway id for a TypeSafe model id; `jev-latest` is published there as `typesafe-ai/jev`. */
+const gatewayModelFor = (model) => model === "jev-latest" ? "typesafe-ai/jev" : `typesafe-ai/${model}`;
+/** Picks the backend for a rule list, or says which credential is missing. */
 function backendFor(options) {
 	const { judge } = options;
 	if (judge !== void 0) {
 		if (judge.provider === void 0 && !hasGatewayCredentials()) return {
 			ok: false,
-			missing: "AI_GATEWAY_API_KEY"
+			reason: "AI_GATEWAY_API_KEY is not set"
 		};
 		const provider = judge.provider === void 0 ? void 0 : path.resolve(process.cwd(), judge.provider);
 		return {
@@ -115,7 +119,7 @@ function backendFor(options) {
 	if (options.model.includes("/")) {
 		if (!hasGatewayCredentials()) return {
 			ok: false,
-			missing: "AI_GATEWAY_API_KEY"
+			reason: "AI_GATEWAY_API_KEY is not set"
 		};
 		return {
 			ok: true,
@@ -128,10 +132,22 @@ function backendFor(options) {
 		};
 	}
 	const apiKey = env("TYPESAFE_API_KEY") || env("TYPESAFE_AI_API_KEY");
-	if (apiKey === "") return {
-		ok: false,
-		missing: "TYPESAFE_API_KEY"
-	};
+	if (apiKey === "") {
+		if (!hasGatewayCredentials()) return {
+			ok: false,
+			reason: NO_JEV_CREDENTIALS
+		};
+		const model = gatewayModelFor(options.model);
+		return {
+			ok: true,
+			backend: {
+				kind: "gateway",
+				model,
+				longContext: options.longContext
+			},
+			id: `gateway ${model}`
+		};
+	}
 	const baseURL = typeSafeBaseURL();
 	return {
 		ok: true,
@@ -538,9 +554,9 @@ function startPass(context, member) {
 		if (process.env.CI && options.ci === "fail") {
 			if (missingKeyRaised) return "skip";
 			missingKeyRaised = true;
-			throw new Error(`oxlint-plugin-jev: ${chosen.missing} is not set`);
+			throw new Error(`oxlint-plugin-jev: ${chosen.reason}`);
 		}
-		warnOnce(`missing-key:${chosen.missing}`, `${chosen.missing} is not set, skipping Jev checks`);
+		warnOnce(`missing-key:${chosen.reason}`, `${chosen.reason}, skipping Jev checks`);
 		return "skip";
 	}
 	let changed = null;

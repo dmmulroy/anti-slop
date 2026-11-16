@@ -344,6 +344,10 @@ function withApiVersion(url: string): string {
 
 const isOff = (value: string | undefined): boolean => value !== undefined && ["0", "false", "no", "off"].includes(value.toLowerCase());
 
+/** The reason given when no backend is requested and no judge of any kind is configured. */
+export const NO_JUDGE_CREDENTIALS =
+  "no diff-rules judge is configured: set TYPESAFE_API_KEY (or TYPESAFE_AI_API_KEY), AI_GATEWAY_API_KEY, or LLM_JUDGE_BASE_URL with LLM_JUDGE_MODEL, or give a judge command (--command, ANTI_SLOP_DIFF_RULES_COMMAND, or command in the config)";
+
 /** Build the requested backend, or the first one with credentials when none is requested. */
 export function chooseBackend(
   requested: BackendName | undefined,
@@ -377,6 +381,12 @@ export function chooseBackend(
           : command !== undefined
             ? "command"
             : "decision-model");
+
+  const nothingConfigured =
+    typesafeKey === undefined && judgeURL === undefined && !gateway && command === undefined;
+  if (requested === undefined && config.backend === undefined && nothingConfigured) {
+    return { ok: false, name, reason: NO_JUDGE_CREDENTIALS };
+  }
 
   if (name === "decision-model") {
     const model = overrides.model ?? envValue(env, "TYPESAFE_DEFAULT_MODEL") ?? config.model;

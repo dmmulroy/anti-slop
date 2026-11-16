@@ -18,9 +18,9 @@ anti-slop uses Kyle Mistele's fork of `oxlint-plugin-jev`, which adds `createJev
 rule per question, all of a plugin's rules sharing one request per file), per-rule `message`,
 `changedOnly`, LLM-judge mode, and an AI SDK transport. The fork is not published to npm, so:
 
-- This repository includes it as a git submodule at `vendor/oxlint-plugin-jev`, pinned to commit
-  `af40809` on branch `kyle/ai-sdk-rule-per-question` (fork PR #2, stacked on PR #1). Move the pin to
-  the fork's `main` once both PRs merge. `pnpm build:jev` installs the submodule's own dependencies
+- This repository includes it as a git submodule at `vendor/oxlint-plugin-jev`, pinned to a commit
+  on the fork's `main` (`741b19b`). To update it, check out a newer `main` commit in the submodule,
+  then run `pnpm build:jev` and `pnpm sync:skill-assets`. `pnpm build:jev` installs the submodule's own dependencies
   with npm, builds it with `vp pack`, and reinstalls, and anti-slop depends on it as
   `"oxlint-plugin-jev": "file:vendor/oxlint-plugin-jev"`. Clone with `--recurse-submodules`, or run
   `git submodule update --init`, then `pnpm install && pnpm build:jev`.

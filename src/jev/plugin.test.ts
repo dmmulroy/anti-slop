@@ -69,7 +69,7 @@ try {
   // `<plugin>/<id>` rule name.
   const known = lintWith(ruleNames);
   assert.equal(known.status, 0, known.output);
-  assert.match(known.output, /TYPESAFE_API_KEY is not set/);
+  assert.match(known.output, /no Jev credentials/);
 
   const unknown = lintWith([`${effectJevPluginName}/not-a-preset-id`]);
   assert.notEqual(unknown.status, 0, "oxlint must reject a rule name the plugin does not define");

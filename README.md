@@ -676,7 +676,7 @@ pnpm build:jev
 pnpm check
 ```
 
-`src/` is canonical. `vendor/oxlint-plugin-jev` is a submodule of the jev fork, pinned to commit `af40809` (fork PR #2); move it to the fork's `main` once its PRs merge, then run `pnpm build:jev` and `pnpm sync:skill-assets`. After changing production source, run `pnpm sync:skill-assets`; CI checks that the skill's bundled copies of `src/` and of the built fork remain identical. `pnpm check` runs Oxlint, every RuleTester suite, TypeScript typechecking, and the skill-asset drift check.
+`src/` is canonical. `vendor/oxlint-plugin-jev` is a submodule of the jev fork, pinned to a commit on its `main` (`741b19b`); after moving the pin, run `pnpm build:jev` and `pnpm sync:skill-assets`. After changing production source, run `pnpm sync:skill-assets`; CI checks that the skill's bundled copies of `src/` and of the built fork remain identical. `pnpm check` runs Oxlint, every RuleTester suite, TypeScript typechecking, and the skill-asset drift check.
 
 ## License
 

@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chooseBackend, commandBackend, decisionModelBackend, judgeReplySchema, llmJudgeBackend } from "./backends.ts";
+import { NO_JUDGE_CREDENTIALS, chooseBackend, commandBackend, decisionModelBackend, judgeReplySchema, llmJudgeBackend } from "./backends.ts";
 import { resolveConfig } from "./config.ts";
 import type { JudgeInput } from "./input.ts";
 import type { DiffRule } from "./rules.ts";
@@ -375,7 +375,12 @@ console.log(JSON.stringify({ probability: command[0].probability, errors }));
 test("chooseBackend: picks the first configured backend and explains missing credentials", async () => {
   const config = resolveConfig({});
   const none = chooseBackend(undefined, config, {}, {});
-  assert.deepEqual(none, { ok: false, name: "decision-model", reason: "TYPESAFE_API_KEY (or TYPESAFE_AI_API_KEY or AI_GATEWAY_API_KEY) is not set" });
+  assert.deepEqual(none, { ok: false, name: "decision-model", reason: NO_JUDGE_CREDENTIALS });
+  for (const option of ["TYPESAFE_API_KEY", "AI_GATEWAY_API_KEY", "LLM_JUDGE_BASE_URL", "ANTI_SLOP_DIFF_RULES_COMMAND"]) {
+    assert.ok(NO_JUDGE_CREDENTIALS.includes(option), option);
+  }
+  const requestedNone = chooseBackend("decision-model", config, {}, {});
+  assert.deepEqual(requestedNone, { ok: false, name: "decision-model", reason: "TYPESAFE_API_KEY (or TYPESAFE_AI_API_KEY or AI_GATEWAY_API_KEY) is not set" });
   const jev = chooseBackend(undefined, config, { TYPESAFE_API_KEY: "k", TYPESAFE_DEFAULT_MODEL: "jev-1.13.0" }, {});
   assert.ok(jev.ok && jev.backend.name === "decision-model" && jev.backend.model === "jev-1.13.0");
   assert.equal(jev.ok && jev.backend.identity, "decision-model typesafe https://api.typesafe.ai/v1");
