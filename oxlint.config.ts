@@ -12,6 +12,7 @@ export default defineConfig({
 		...Object.fromEntries(effectTsgoRules.map((rule) => [rule, "error"])),
 		"effecttsgo/missing-pipeable-signature": "off",
 		"oxc/no-accumulating-spread": "error",
+		"typescript/no-non-null-assertion": "error",
 	},
 	overrides: [
 		{
