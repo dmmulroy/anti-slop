@@ -129,7 +129,7 @@ Complete when the operation and target path are established and pre-existing wor
 
    Merge these entries with the generic plugin configuration rather than replacing it. Do not enable the Effect plugin merely because Effect appears transitively in a lockfile; require a direct package-manifest dependency or an explicit user request. The rule covers relative project imports. Report package-alias imports as a current limitation rather than pretending they are enforced.
 
-   For Effect repositories, also install `@effect/tsgo` and enable every Effect language service rule as an error. Pick the newest `@effect/tsgo` whose README lists the installed `oxlint`, `oxlint-tsgolint`, and `typescript` versions under "Supported Package Versions"; Vite+ pins its own Oxlint, so check that version too. Install `@effect/tsgo` and `oxlint-tsgolint` as development dependencies, add `"prepare": "effect-tsgo patch --oxlint"` and run it, and add `{ "name": "@effect/language-service", "diagnostics": false }` to `compilerOptions.plugins` in `tsconfig.json`. Then extend every preset and promote each rule except `missing-pipeable-signature`, which demands Effect-style data-last overloads on every exported multi-argument function:
+   For Effect repositories, also install `@effect/tsgo` and enable every Effect language service rule as an error. These rules are type-aware, and they run on the Effect-patched build of tsrs, Oxlint's Rust type-aware backend. Pick the newest `@effect/tsgo` whose README lists the installed `oxlint` and `tsrs` versions under "Supported Package Versions"; Vite+ pins its own Oxlint, so check that version too. Install `@effect/tsgo` and that `tsrs` version as development dependencies, and do not install `oxlint-tsgolint`. Run the lint through the wrapper, which loads the patched Oxlint binding and the patched tsrs without modifying `node_modules`: `"lint": "effect-tsgo --tsrs-lint oxlint"` (keep the existing paths and flags), or `effect-tsgo --tsrs-lint vp check` and `effect-tsgo --tsrs-lint vp lint` for Vite+. Plain `oxlint` rejects the `effecttsgo` plugin, so every script, CI step, and hook that lints must use the wrapper. Do not add `effect-tsgo patch --oxlint`: it requires `oxlint-tsgolint`. Add `{ "name": "@effect/language-service", "diagnostics": false }` to `compilerOptions.plugins` in `tsconfig.json`. Then extend every preset and promote each rule except `missing-pipeable-signature`, which demands Effect-style data-last overloads on every exported multi-argument function:
 
    ```ts
    import { presets } from "@effect/tsgo/oxlint-presets";
@@ -146,6 +146,8 @@ Complete when the operation and target path are established and pre-existing wor
      },
    });
    ```
+
+   `--tsrs-lint` is experimental in `@effect/tsgo`. If `effect-tsgo --tsrs-lint` fails to start or crashes on the repository, fall back to tsgolint: install the `oxlint-tsgolint` version the same README lists, add `"prepare": "effect-tsgo patch --oxlint"` and run it, and lint with plain `oxlint`. Report the fallback and the tsrs failure to the user.
 
    Complete when the generic rules and eligible Effect rules are registered and existing configuration is preserved.
 

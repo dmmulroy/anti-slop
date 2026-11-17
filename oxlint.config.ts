@@ -11,6 +11,11 @@ export default defineConfig({
 	rules: {
 		...Object.fromEntries(effectTsgoRules.map((rule) => [rule, "error"])),
 		"effecttsgo/missing-pipeable-signature": "off",
+		// The plugin walks ESTree nodes with native arrays, strings, objects and JSON and does not depend on effect.
+		"effecttsgo/global-json": "off",
+		"effecttsgo/prefer-effect-array": "off",
+		"effecttsgo/prefer-effect-record": "off",
+		"effecttsgo/prefer-effect-string": "off",
 		"oxc/no-accumulating-spread": "error",
 		"typescript/no-non-null-assertion": "error",
 	},

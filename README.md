@@ -128,7 +128,7 @@ export default defineConfig({
 });
 ```
 
-Effect repositories should also run every `@effect/tsgo` diagnostic as an error. The skill sets this up, and [`oxlint.config.ts`](oxlint.config.ts) in this repository shows the configuration.
+Effect repositories should also run every `@effect/tsgo` diagnostic as an error. Those diagnostics are type-aware and run on the Effect-patched tsrs through `effect-tsgo --tsrs-lint oxlint`, which this repository's `lint` script uses; tsrs mode is experimental, and the skill falls back to `oxlint-tsgolint` when it fails. The skill sets this up, and [`oxlint.config.ts`](oxlint.config.ts) in this repository shows the configuration.
 
 ## What the rules catch
 
