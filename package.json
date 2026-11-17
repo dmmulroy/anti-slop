@@ -24,6 +24,7 @@
     "@ai-sdk/openai-compatible": "3.0.92",
     "@ai-sdk/typesafe-ai": "3.0.40",
     "@effect/tsgo": "0.70.0",
+    "@interfere/landmines": "0.1.0",
     "@types/node": "26.2.0",
     "ai": "7.0.173",
     "oxlint": "1.94.0",

@@ -71,6 +71,8 @@ Preserve existing plugin paths, options, severities, disabled rules, overrides, 
 
 The vendored `oxlint-plugin-jev` package (usually `tools/oxlint/oxlint-plugin-jev/`) is a build, not owned source: replace it whole from `assets/oxlint-plugin-jev/` (or a build of the fork commit the user names), compare the commits in the two `UPSTREAM.md` files, reinstall it so its dependencies update, and review the fork's README for changed options. An installation still on the `jev/ask`/`jev/suggest` rules migrates by registering `jev/plugin.ts` and `martinfowler/jev-plugin.ts` and moving each question into the overlay as `<plugin>/<id>` at the severity its list had, carrying over local option values into the plugin entries. Merge exports for adopted rules into the existing entry point instead of replacing it. Check native companion rules when adopting related custom rules.
 
+An installation without the `landmines` plugin entry predates the `@interfere/landmines` testing rules. Offer them as new rules: install the package and enable the same four rules as a fresh install (`strict-msw`, `no-fixed-sleep`, `no-unsignaled-poll`, `no-flake-masking`), and no other `landmines` rules.
+
 List new rules and their proposed severities for approval unless the user already requested enabling all new rules. Existing disabled rules stay disabled. Merely adding a new rule implementation need not enable it.
 
 Check incoming API requirements against the installed `oxlint` and `@oxlint/plugins` versions. Keep a compatible pair and follow repository version policy; change dependencies only when required by the adopted source or requested by the user. Preserve unrelated dependency ranges and the package manager.

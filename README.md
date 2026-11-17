@@ -10,6 +10,7 @@ anti-slop was created by [Dillon Mulroy](https://github.com/dmmulroy) at [dmmulr
 - More Effect AST rules (`anti-slop-effect`).
 - A Martin Fowler AST code-smell bundle (`anti-slop-martinfowler`).
 - Diff rules that judge a whole change set, for smells such as shotgun surgery and scope creep.
+- Four test-honesty rules from [interfere-inc/landmines](https://github.com/interfere-inc/landmines) (MIT), installed from npm as `@interfere/landmines`: `strict-msw`, `no-fixed-sleep`, `no-unsignaled-poll`, and `no-flake-masking`.
 
 See [Jev rules](#jev-rules-llm-judged) and the [rule catalog](#jev-and-diff-rules).
 
@@ -28,8 +29,8 @@ npx skills add K-Mistele/anti-slop --skill install-anti-slop
 Then ask your coding agent to install anti-slop. The skill does the following:
 
 - runs `scripts/install.mjs`, which copies the plugin to `tools/oxlint/anti-slop/`;
-- installs `oxlint` and `@oxlint/plugins` at matching versions;
-- merges the plugin into your existing Oxlint or Vite+ config, with every core rule enabled;
+- installs `oxlint` and `@oxlint/plugins` at matching versions, and `@interfere/landmines`;
+- merges the plugin into your existing Oxlint or Vite+ config, with every core rule and the four landmines testing rules enabled;
 - enables the Effect rules and the `@effect/tsgo` diagnostics when `effect` is a direct dependency;
 - runs your lint and typecheck.
 
@@ -53,7 +54,7 @@ The script refuses to overwrite an existing directory. `--force` overrides that 
 ```sh
 git clone --depth 1 https://github.com/K-Mistele/anti-slop /tmp/anti-slop
 mkdir -p tools/oxlint && cp -R /tmp/anti-slop/src tools/oxlint/anti-slop
-npm install --save-dev --save-exact oxlint@1.93.0 @oxlint/plugins@1.93.0
+npm install --save-dev --save-exact oxlint@1.93.0 @oxlint/plugins@1.93.0 @interfere/landmines@0.1.0
 ```
 
 If you already depend on `oxlint`, install `@oxlint/plugins` at exactly that version instead. The upstream repository is tested with 1.86.0. Running `node /tmp/anti-slop/skills/install-anti-slop/scripts/install.mjs --jev` from your repository does the same copy and also adds the Jev fork.
@@ -74,6 +75,7 @@ export default defineConfig({
     { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
     { name: "anti-slop-effect", specifier: "./tools/oxlint/anti-slop/effect/index.ts" }, // Effect repositories only
     { name: "anti-slop-martinfowler", specifier: "./tools/oxlint/anti-slop/martinfowler/index.ts" },
+    { name: "landmines", specifier: "@interfere/landmines/testing" },
   ],
   rules: {
     "oxc/no-accumulating-spread": "error",
@@ -100,6 +102,11 @@ export default defineConfig({
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-readable-spacing": "error",
     "anti-slop/require-safety-comment-for-type-assertion": "error",
+
+    "landmines/strict-msw": "error",
+    "landmines/no-fixed-sleep": "error",
+    "landmines/no-unsignaled-poll": "error",
+    "landmines/no-flake-masking": "error",
 
     "anti-slop-effect/no-manual-effect-error-tag": "error",
     "anti-slop-effect/no-manual-tag-comparison": "error",
@@ -321,6 +328,17 @@ Both Jev and the diff rules use the first credential they find.
 | [`require-readable-spacing`](src/rules/require-readable-spacing.ts) | Require readable spacing between declarations and logical statement groups. |
 | [`require-safety-comment-for-type-assertion`](src/rules/require-safety-comment-for-type-assertion.ts) | Require a nearby SAFETY comment for every TypeScript type assertion except const assertions. |
 
+### Testing (`landmines`, error)
+
+These four rules come from [interfere-inc/landmines](https://github.com/interfere-inc/landmines) by Interfere, Inc., under the MIT license. anti-slop does not vendor them: install `@interfere/landmines` from npm and register its `testing` entry point as the `landmines` plugin. Use only these four, not the package's recommended config, whose other rules (`no-test-doubles`, `no-comments`, `colocated-tests`, `test-file-names`, `package-exports`, `no-explicit-return-types`) conflict with anti-slop's rules or with policies anti-slop leaves to each repository.
+
+| Rule | What it checks |
+| --- | --- |
+| `strict-msw` | MSW started without `onUnhandledRequest: "error"`, so unmocked requests silently reach the network. |
+| `no-fixed-sleep` | Awaiting a fixed real-time delay in a test or hook. Await the operation or a signal it emits. |
+| `no-unsignaled-poll` | `expect.poll` and `vi.waitFor` on request recorders and spy state, which race a deadline instead of awaiting an event. |
+| `no-flake-masking` | Test retries and raised timeouts. A test that passes on rerun is a flake to fix. |
+
 ### Effect (`anti-slop-effect`, error)
 
 | Rule | What it checks |
@@ -376,4 +394,4 @@ pnpm check       # oxlint with the tsrs typecheck, every RuleTester suite, and t
 
 ## License
 
-MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license.
+MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license. The `landmines` testing rules are the MIT-licensed [`@interfere/landmines`](https://github.com/interfere-inc/landmines) npm package, used as a dependency.
