@@ -128,7 +128,7 @@ export default defineConfig({
 });
 ```
 
-Effect repositories should also run every `@effect/tsgo` diagnostic as an error. Those diagnostics are type-aware and run on the Effect-patched tsrs through `effect-tsgo --tsrs-lint oxlint`, which this repository's `lint` script uses; tsrs mode is experimental, and the skill falls back to `oxlint-tsgolint` when it fails. The skill sets this up, and [`oxlint.config.ts`](oxlint.config.ts) in this repository shows the configuration.
+Effect repositories should also run every `@effect/tsgo` diagnostic as an error. Those diagnostics are type-aware and run on the Effect-patched tsrs through `effect-tsgo --tsrs-lint oxlint`, which this repository's `lint` script uses with `--type-check` so the same tsrs pass also typechecks, with no `tsc`; tsrs mode is experimental, and the skill falls back to `oxlint-tsgolint` when it fails. The skill sets this up, and [`oxlint.config.ts`](oxlint.config.ts) in this repository shows the configuration.
 
 ## What the rules catch
 
@@ -369,7 +369,7 @@ The repository also ships an [`effect-program-design`](skills/effect-program-des
 git clone --recurse-submodules https://github.com/K-Mistele/anti-slop
 pnpm install
 pnpm build:jev   # builds the vendor/oxlint-plugin-jev submodule
-pnpm check       # oxlint, every RuleTester suite, typecheck, and the skill-asset drift check
+pnpm check       # oxlint with the tsrs typecheck, every RuleTester suite, and the skill-asset drift check
 ```
 
 `src/` is the canonical source. After you change it or move the submodule pin, run `pnpm sync:skill-assets` so the copies bundled in `skills/install-anti-slop/assets/` stay identical.
