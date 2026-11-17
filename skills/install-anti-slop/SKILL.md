@@ -34,6 +34,7 @@ Complete when the operation and target path are established and pre-existing wor
    - If the repository already depends on `oxlint`, read its installed version from the package manager or lockfile and install `@oxlint/plugins` at exactly that version. Pin it exactly rather than by range so future upgrades move both packages together.
    - Only when the repository has no `oxlint` dependency, query `npm view oxlint version` and `npm view @oxlint/plugins version`, then install the same current version of both packages.
    - `oxlint` is a development dependency. The copied source imports `@oxlint/plugins`, so install it as a development dependency for a local-only plugin.
+   - Install [`@interfere/landmines`](https://github.com/interfere-inc/landmines) as a development dependency, pinned exactly at the version `npm view @interfere/landmines version` reports. Its testing rules load from the package, not from the vendored copy. It needs `oxlint` 1.81 or later and Node 22.18 or later; if the repository's `oxlint` is older, report that and ask before upgrading `oxlint` and `@oxlint/plugins` together.
    - Do not replace the package manager or rewrite unrelated dependency ranges.
 
    Complete when matching compatible versions are installed and unrelated dependency ranges are preserved.
@@ -57,6 +58,7 @@ Complete when the operation and target path are established and pre-existing wor
    ],
    jsPlugins: [
      { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+     { name: "landmines", specifier: "@interfere/landmines/testing" },
    ],
    ```
 
@@ -90,9 +92,15 @@ Complete when the operation and target path are established and pre-existing wor
      "anti-slop/no-unsafe-dictionary-type": "error",
      "anti-slop/no-widen-then-assert": "error",
      "anti-slop/require-readable-spacing": "error",
-     "anti-slop/require-safety-comment-for-type-assertion": "error"
+     "anti-slop/require-safety-comment-for-type-assertion": "error",
+     "landmines/strict-msw": "error",
+     "landmines/no-fixed-sleep": "error",
+     "landmines/no-unsignaled-poll": "error",
+     "landmines/no-flake-masking": "error"
    }
    ```
+
+   The four `landmines/*` rules come from the `@interfere/landmines/testing` plugin and catch tests that pass without proving anything: MSW started without `onUnhandledRequest: "error"` (`strict-msw`), fixed real-time sleeps in tests and hooks (`no-fixed-sleep`), `vi.waitFor` or `expect.poll` on spy or recorder state (`no-unsignaled-poll`), and test retries or raised timeouts (`no-flake-masking`). Enable exactly these four. Do not use the package's `configs/recommended.json`: it has no `plugins` list, so extending it also turns on Oxlint's default plugins, and it enables `no-test-doubles`, `no-comments`, `colocated-tests`, `test-file-names`, `package-exports`, and `no-explicit-return-types`, which conflict with anti-slop's own rules and with comment and return-type policies that anti-slop leaves to the repository. When cleanup is authorized, fix each finding at its cause: await the operation or a deferred its handler resolves instead of sleeping, use fake timers to move time, make MSW fail on unhandled requests, and remove retries and timeout bumps by fixing what the test waits on. Do not add disable comments or the rules' `allow` lists unless the user asks for a ratchet.
 
    For `no-array-filter-map`, prefer lazy `.values().filter(...).map(...).toArray()` pipelines only when the target runtime supports iterator helpers; otherwise use an appropriate single `flatMap` or locally mutating reducer. Review callback order, indexes, sparse arrays, `thisArg`, and filtering semantics rather than mechanically rewriting chains. Unknown receiver types are deliberately not inferred by this AST/scope rule.
 

@@ -8,6 +8,7 @@ const effectTsgoRules = Object.values(presets).flatMap((preset) =>
 export default defineConfig({
 	extends: Object.values(presets),
 	ignorePatterns: ["src/vendor/**"],
+	jsPlugins: [{ name: "landmines", specifier: "@interfere/landmines/testing" }],
 	rules: {
 		...Object.fromEntries(effectTsgoRules.map((rule) => [rule, "error"])),
 		"effecttsgo/missing-pipeable-signature": "off",
@@ -18,6 +19,10 @@ export default defineConfig({
 		"effecttsgo/prefer-effect-string": "off",
 		"oxc/no-accumulating-spread": "error",
 		"typescript/no-non-null-assertion": "error",
+		"landmines/strict-msw": "error",
+		"landmines/no-fixed-sleep": "error",
+		"landmines/no-unsignaled-poll": "error",
+		"landmines/no-flake-masking": "error",
 	},
 	overrides: [
 		{
