@@ -12,14 +12,26 @@ export function resolveIdentifier(sourceCode: SourceCode, identifier: ESTree.Nod
 }
 
 /** Effect modules whose members the Effect rules recognize. */
-export type EffectModule = "Context" | "Effect" | "Layer" | "ManagedRuntime";
+export type EffectModule = "Context" | "Effect" | "HttpClient" | "Layer" | "ManagedRuntime" | "Schedule" | "Stream";
 
 const effectModules: ReadonlySet<string> = new Set<EffectModule>([
 	"Context",
 	"Effect",
+	"HttpClient",
 	"Layer",
 	"ManagedRuntime",
+	"Schedule",
+	"Stream",
 ]);
+
+/** Barrels that re-export Effect modules as named exports. */
+const moduleBarrels: ReadonlySet<string> = new Set(["effect", "effect/http"]);
+
+/** The module a namespace import of `source` binds: `effect/Schedule` or `effect/http/HttpClient`. */
+function namespaceModule(source: string): string {
+	if (source.startsWith("effect/http/")) return source.slice("effect/http/".length);
+	return source.startsWith("effect/") ? source.slice("effect/".length) : "";
+}
 
 /** Local names bound to each Effect module by the file's imports. */
 export type EffectModuleNames = ReadonlyMap<EffectModule, ReadonlySet<string>>;
@@ -29,7 +41,10 @@ const isEffectModule = (name: string): name is EffectModule => effectModules.has
 const importedName = (specifier: ESTree.ImportSpecifier): string =>
 	specifier.imported.type === "Identifier" ? specifier.imported.name : specifier.imported.value;
 
-/** Collect `import { Effect } from "effect"` and `import * as Effect from "effect/Effect"` bindings. */
+/**
+ * Collect `import { Effect } from "effect"`, `import { HttpClient } from "effect/http"`,
+ * `import * as Effect from "effect/Effect"`, and `import * as HttpClient from "effect/http/HttpClient"` bindings.
+ */
 export function collectEffectModuleNames(program: ESTree.Program): EffectModuleNames {
 	const names = new Map<EffectModule, Set<string>>();
 	const add = (module: EffectModule, local: string) => {
@@ -41,7 +56,7 @@ export function collectEffectModuleNames(program: ESTree.Program): EffectModuleN
 	for (const statement of program.body) {
 		if (statement.type !== "ImportDeclaration") continue;
 		const source = statement.source.value;
-		if (source === "effect") {
+		if (moduleBarrels.has(source)) {
 			for (const specifier of statement.specifiers) {
 				if (specifier.type !== "ImportSpecifier") continue;
 				const name = importedName(specifier);
@@ -49,7 +64,7 @@ export function collectEffectModuleNames(program: ESTree.Program): EffectModuleN
 			}
 			continue;
 		}
-		const module = source.startsWith("effect/") ? source.slice("effect/".length) : "";
+		const module = namespaceModule(source);
 		if (!isEffectModule(module)) continue;
 		for (const specifier of statement.specifiers) {
 			if (specifier.type === "ImportNamespaceSpecifier" || specifier.type === "ImportDefaultSpecifier") {

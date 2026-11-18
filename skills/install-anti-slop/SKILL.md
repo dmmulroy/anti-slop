@@ -125,7 +125,9 @@ Complete when the operation and target path are established and pre-existing wor
      "anti-slop-effect/no-ordie-in-service-construction": "error",
      "anti-slop-effect/no-service-constructor-imports": "error",
      "anti-slop-effect/no-service-parameters": "error",
+     "anti-slop-effect/no-static-effect-service-forwarders": "error",
      "anti-slop-effect/no-test-code-in-src": "error",
+     "anti-slop-effect/no-unbounded-retry": "error",
      "anti-slop-effect/prefer-effect-match": "error",
      "anti-slop-effect/prefer-tagged-error-handling": "error",
      "anti-slop-effect/prefer-yield-service": "error",
@@ -134,6 +136,8 @@ Complete when the operation and target path are established and pre-existing wor
      "anti-slop-effect/require-service-make-layer": "error",
    },
    ```
+
+   `no-static-effect-service-forwarders` rejects static members of a service class that only fetch the service and call one of its methods (`static find = (id) => Users.use((users) => users.find(id))`); callers should `yield* Users` and call the method, so the dependency is visible where it is used. `no-unbounded-retry` is ported from cevr/effect-oxlint's `noUnboundedRetry` (MIT) and requires every `Effect.retry`, `Effect.retryOrElse`, `Stream.retry`, and `HttpClient.retryTransient` policy to stop: a `times` option, `Schedule.upTo({ times })` or `Schedule.upTo({ duration })`, `Schedule.max` with `Schedule.recurs` or `Schedule.during`, a bounded constructor, or a later `Effect.timeout` in the same pipeline. Schedules it cannot read (imports, function results, custom combinators) are left alone.
 
    Merge these entries with the generic plugin configuration rather than replacing it. Do not enable the Effect plugin merely because Effect appears transitively in a lockfile; require a direct package-manifest dependency or an explicit user request. The rule covers relative project imports. Report package-alias imports as a current limitation rather than pretending they are enforced.
 
@@ -157,7 +161,7 @@ Complete when the operation and target path are established and pre-existing wor
 
    `--tsrs-lint` is experimental in `@effect/tsgo`. If `effect-tsgo --tsrs-lint` fails to start or crashes on the repository, fall back to tsgolint: install the `oxlint-tsgolint` version the same README lists, add `"prepare": "effect-tsgo patch --oxlint"` and run it, and lint with plain `oxlint`. Report the fallback and the tsrs failure to the user.
 
-   When the repository's direct `effect` dependency is 4.1 or later, also install [`oxlint-plugin-effect`](https://github.com/cevr/effect-oxlint) (cevr/effect-oxlint, MIT) as a development dependency, pinned exactly at the version `npm view oxlint-plugin-effect version` reports. Its rules load from the package, not from the vendored copy. The plugin imports `effect` at runtime (peer range `>=4.1.0 <5`) and depends on `@oxlint/plugins` ^1.94. On Effect 3 or 4.0, skip it and report why; do not upgrade `effect` for it. If the repository's `oxlint` is older than 1.94, report that and ask before upgrading `oxlint` and `@oxlint/plugins` together. Register it and enable exactly these nine rules:
+   When the repository's direct `effect` dependency is 4.1 or later, also install [`oxlint-plugin-effect`](https://github.com/cevr/effect-oxlint) (cevr/effect-oxlint, MIT) as a development dependency, pinned exactly at the version `npm view oxlint-plugin-effect version` reports. Its rules load from the package, not from the vendored copy. The plugin imports `effect` at runtime (peer range `>=4.1.0 <5`) and depends on `@oxlint/plugins` ^1.94. On Effect 3 or 4.0, skip it and report why; do not upgrade `effect` for it. If the repository's `oxlint` is older than 1.94, report that and ask before upgrading `oxlint` and `@oxlint/plugins` together. Register it and enable exactly these ten rules:
 
    ```ts
    jsPlugins: [
@@ -173,15 +177,56 @@ Complete when the operation and target path are established and pre-existing wor
      "effect/noSilentCatchAll": "error",
      "effect/noUnboundedConcurrency": "error",
      "effect/requireSuppressionReason": "error",
+     "effect/requireForceKillAfter": "error",
    },
    ```
 
-   These rules catch Effect code that type-checks but misbehaves at runtime: a `Test`/`Fake`/`Stub`/`Mock` layer that only returns the live layer (`noAliasTestLayer`), an `acquireRelease` whose resource is built before acquire runs (`noEagerAcquire`), `ManagedRuntime.make` inside an Effect program (`noManagedRuntimeInEffect`), `Effect.cached` or `Cache.make` inside an `Effect.fn` operation, which builds new cache state on every call (`noPerCallCacheConstruction`), a logger passed point-free to a callback that also receives an index (`noPointFreeLog`), `Stream.runCollect` on a stream that never ends (`noRunCollectOnUnboundedStream`), `catch`/`catchCause` handlers that turn every failure into `Effect.void` (`noSilentCatchAll`), `concurrency: "unbounded"` over a collection that can grow (`noUnboundedConcurrency`), and lint, Effect, or TypeScript suppressions without a ` -- ` reason (`requireSuppressionReason`). `noUnboundedConcurrency` pairs with `effecttsgo/missing-concurrency-option`: the tsgo rule asks for a concurrency option and this rule rejects `"unbounded"` as the answer.
+   These rules catch Effect code that type-checks but misbehaves at runtime: a `Test`/`Fake`/`Stub`/`Mock` layer that only returns the live layer (`noAliasTestLayer`), an `acquireRelease` whose resource is built before acquire runs (`noEagerAcquire`), `ManagedRuntime.make` inside an Effect program (`noManagedRuntimeInEffect`), `Effect.cached` or `Cache.make` inside an `Effect.fn` operation, which builds new cache state on every call (`noPerCallCacheConstruction`), a logger passed point-free to a callback that also receives an index (`noPointFreeLog`), `Stream.runCollect` on a stream that never ends (`noRunCollectOnUnboundedStream`), `catch`/`catchCause` handlers that turn every failure into `Effect.void` (`noSilentCatchAll`), `concurrency: "unbounded"` over a collection that can grow (`noUnboundedConcurrency`), lint, Effect, or TypeScript suppressions without a ` -- ` reason (`requireSuppressionReason`), and `ChildProcess.make` commands without `forceKillAfter`, whose child can ignore SIGTERM and hold its scope open forever when interrupted (`requireForceKillAfter`). `noUnboundedConcurrency` pairs with `effecttsgo/missing-concurrency-option`: the tsgo rule asks for a concurrency option and this rule rejects `"unbounded"` as the answer.
 
-   Do not extend `presets/recommended.json` or spread the `recommended` preset, and do not enable other `effect/*` rules. The preset turns on rules that duplicate anti-slop, landmines, or `@effect/tsgo` checks (the anti-slop copies such as `noChainedTypeAssertions`, plus `noModuleMocks`, `noFixedWaitInTests`, `noNestedEffectGen`, `preferEffectFn`, `noEffectDo`, `noGlobals`, and `noNodeBuiltinImport`), bans ordinary language features (`noNullish`, `noTernary`, `noAsyncFunction`, `noThrowStatement`, `noTryCatch`, `noNewPromise`, `noNewError`, `noAs`, and `noComments`, which also deletes the SAFETY comments `require-safety-comment-for-type-assertion` requires), and encodes runtime or test-layout policy that anti-slop leaves to the repository. `effect/noUnboundedRetry` stays off because version 0.32.4 reports retries bounded with `Schedule.upTo({ times })` or `Schedule.upTo({ duration })`, the Effect 4.1 way to bound a schedule; `effect/requireForceKillAfter` stays off because it reports every `ChildProcess.make`, including short-lived commands in tests.
+   Do not extend `presets/recommended.json` or spread the `recommended` preset, and do not enable other `effect/*` rules. The preset turns on rules that duplicate anti-slop, landmines, or `@effect/tsgo` checks (the anti-slop copies such as `noChainedTypeAssertions`, plus `noModuleMocks`, `noFixedWaitInTests`, `noNestedEffectGen`, `preferEffectFn`, `noEffectDo`, `noGlobals`, and `noNodeBuiltinImport`), bans ordinary language features (`noNullish`, `noTernary`, `noAsyncFunction`, `noThrowStatement`, `noTryCatch`, `noNewPromise`, `noNewError`, `noAs`, and `noComments`, which also deletes the SAFETY comments `require-safety-comment-for-type-assertion` requires), and encodes runtime or test-layout policy that anti-slop leaves to the repository. `effect/noUnboundedRetry` stays off because version 0.32.4 reports retries bounded with `Schedule.upTo({ times })` or `Schedule.upTo({ duration })`, the Effect 4.1 way to bound a schedule, and retries followed by `Effect.timeout`; `anti-slop-effect/no-unbounded-retry` is the corrected port.
 
-   When cleanup is authorized, fix each finding at its cause: give each suppression a reason after ` -- ` that says why the check does not apply (or remove the suppression), choose a finite concurrency, record the cause before recovering or recover a named failure instead of erasing it (switching to `Effect.ignore` hides the same failure), build the resource inside acquire, construct caches once in the owning layer, and terminate a stream with `take`, `takeUntil`, `takeWhile`, or `timeout` before collecting it.
-   Complete when the generic rules, eligible Effect rules, and, on Effect 4.1 or later, the nine `effect/*` rules are registered and existing configuration is preserved.
+   When cleanup is authorized, fix each finding at its cause: give each suppression a reason after ` -- ` that says why the check does not apply (or remove the suppression), choose a finite concurrency, record the cause before recovering or recover a named failure instead of erasing it (switching to `Effect.ignore` hides the same failure), build the resource inside acquire, construct caches once in the owning layer, terminate a stream with `take`, `takeUntil`, `takeWhile`, or `timeout` before collecting it, and name `forceKillAfter` (for example `"5 seconds"`) on each `ChildProcess.make`, or `killSignal: "SIGKILL"`.
+
+   In every Effect repository, also install [`@enfect/oxlint`](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) (mpsuesser/enfect, MIT) as a development dependency, pinned exactly at the version `npm view @enfect/oxlint version` reports. It depends on its own `effect` and `@oxlint/plugins` ^1.85, so it does not constrain the repository's Effect version. Register it under the name `enfect`, never `effect`, which is cevr's plugin, and enable exactly these nine rules:
+
+   ```ts
+   jsPlugins: [
+     { name: "enfect", specifier: "@enfect/oxlint" },
+   ],
+   rules: {
+     "enfect/throw-in-effect-gen": "error",
+     "enfect/effect-promise-vs-trypromise": "error",
+     "enfect/prefer-redacted-config": "error",
+     "enfect/avoid-option-getorthrow": "error",
+     "enfect/effect-run-in-body": "error",
+     "enfect/no-cause-in-http-response": "error",
+     "enfect/no-effect-ignore-then-as": "error",
+     "enfect/avoid-expect-in-if": "error",
+     "enfect/yield-in-for-loop": "error",
+   },
+   ```
+
+   They reject `throw` inside `Effect.gen`, `Effect.fn`, or `Effect.fnUntraced` outside an `Effect.try` callback (`throw-in-effect-gen`), every `Effect.promise`, whose rejection becomes a defect instead of a typed failure (`effect-promise-vs-trypromise`), secret-named configuration read with `Config.String` or `Config.NonEmptyString`, or a secret-named `Schema.String` field in `Config.schema`, instead of a redacted value (`prefer-redacted-config`), any `.getOrThrow` member access (`avoid-option-getorthrow`), every `Effect.runSync`, `Effect.runPromise`, and `Effect.runFork` (`effect-run-in-body`; turn it off in an `overrides` block for entry points and test harnesses), `Cause.pretty`, `Cause.squash`, or a caught cause or error rendered into an HTTP response body (`no-cause-in-http-response`), `Effect.ignore` immediately before `Effect.as` in a pipe, which only hides the failure (`no-effect-ignore-then-as`), `expect` inside an `if`, which passes when the branch is skipped (`avoid-expect-in-if`), and `yield*` inside a `for` loop instead of `Effect.forEach` with an explicit concurrency (`yield-in-for-loop`). Do not use the package's other rules: most duplicate anti-slop, `@effect/tsgo`, or cevr checks, or ban ordinary language features. `effect-promise-vs-trypromise`, `yield-in-for-loop`, `effect-run-in-body`, and `avoid-expect-in-if` produce many findings in established codebases, mostly in tests; report the counts and fix them only when cleanup is authorized.
+
+   Complete when the generic rules, eligible Effect rules, the nine `enfect/*` rules, and, on Effect 4.1 or later, the ten `effect/*` rules are registered and existing configuration is preserved.
+
+   If a package manifest declares `xstate` as a direct dependency, or the user asks for XState rules, also register the opt-in XState plugin. Do not enable it for a transitive `xstate` in a lockfile:
+
+   ```ts
+   jsPlugins: [
+     { name: "anti-slop-xstate", specifier: "./tools/oxlint/anti-slop/xstate/index.ts" },
+   ],
+   rules: {
+     "anti-slop-xstate/no-direct-xstate-create-machine": "error",
+     "anti-slop-xstate/no-direct-xstate-use-selector": "error",
+     "anti-slop-xstate/no-multiple-xstate-hooks": "error",
+     "anti-slop-xstate/no-single-use-xstate-actions": "error",
+     "anti-slop-xstate/no-single-use-xstate-guards": "error",
+     "anti-slop-xstate/require-xstate-event-satisfies": "error",
+   },
+   ```
+
+   They require machines built with `setup({ ... }).createMachine(...)` rather than `createMachine`, reject `useSelector` from `@xstate/react` and a second `useMachine`, `useActor`, or `useActorRef` in one component, reject `setup` actions and guards the machine references only once (inline those), and require `send({ type: ... } satisfies MachineEvent)` in files that import XState. The `no-direct-xstate-use-selector` and `no-multiple-xstate-hooks` rules only apply to React code.
 
    Optional, paid checks. Offer them only when the user opts in, because each match or diff is a paid model request:
 
