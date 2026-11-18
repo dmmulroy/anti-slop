@@ -11,6 +11,7 @@ export default defineConfig({
 	jsPlugins: [
 		{ name: "landmines", specifier: "@interfere/landmines/testing" },
 		{ name: "effect", specifier: "oxlint-plugin-effect/plugin" },
+		{ name: "enfect", specifier: "@enfect/oxlint" },
 	],
 	rules: {
 		...Object.fromEntries(effectTsgoRules.map((rule) => [rule, "error"])),
@@ -35,6 +36,16 @@ export default defineConfig({
 		"effect/noSilentCatchAll": "error",
 		"effect/noUnboundedConcurrency": "error",
 		"effect/requireSuppressionReason": "error",
+		"effect/requireForceKillAfter": "error",
+		"enfect/throw-in-effect-gen": "error",
+		"enfect/effect-promise-vs-trypromise": "error",
+		"enfect/prefer-redacted-config": "error",
+		"enfect/avoid-option-getorthrow": "error",
+		"enfect/effect-run-in-body": "error",
+		"enfect/no-cause-in-http-response": "error",
+		"enfect/no-effect-ignore-then-as": "error",
+		"enfect/avoid-expect-in-if": "error",
+		"enfect/yield-in-for-loop": "error",
 	},
 	overrides: [
 		{

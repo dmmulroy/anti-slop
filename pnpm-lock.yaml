@@ -24,6 +24,9 @@ importers:
       '@effect/tsgo':
         specifier: 0.70.0
         version: 0.70.0
+      '@enfect/oxlint':
+        specifier: 0.10.0
+        version: 0.10.0
       '@interfere/landmines':
         specifier: 0.1.0
         version: 0.1.0(oxlint@1.94.0)
@@ -155,6 +158,9 @@ packages:
 
   '@emnapi/wasi-threads@1.2.2':
     resolution: {integrity: sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA==}
+
+  '@enfect/oxlint@0.10.0':
+    resolution: {integrity: sha512-A5VEkq8tV8FDRnvK0/AAQePX5iszZ6FlBIwWOsnb6EJFUDURwUIxpJvv3R5sXINId2zkYk1DIjOhpP4W0YsbHg==}
 
   '@esbuild/aix-ppc64@0.28.2':
     resolution: {integrity: sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==}
@@ -636,6 +642,14 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  effect-oxlint@0.4.0:
+    resolution: {integrity: sha512-IA3ihFKGK0JoZVSPPgPP58988jj4PZ5/asFOhaSYHwDyRRRbkBJn7FX8RiPi++MFpXQvb+3fQpKdPzOvUK9xPQ==}
+    peerDependencies:
+      effect: ^4.0.0
+
+  effect@4.1.0:
+    resolution: {integrity: sha512-lGx2MJJyrXA8RZb2UpQ/0Nkb5Utaimby7oD92+18noBxLPE85IFOvptdzau8dvcxAOwfwHo9iqapbKeFzqQM/Q==}
+
   effect@4.1.4:
     resolution: {integrity: sha512-Tgrv/9FN+TZYyOn8XSli+fVqAfwDrDAkiX5Uu9vztINb675VTQdhD0gWI5Kzvhlh9QqzjZvw72iugqw5pwoghQ==}
 
@@ -807,6 +821,12 @@ snapshots:
     dependencies:
       tslib: 2.9.1
     optional: true
+
+  '@enfect/oxlint@0.10.0':
+    dependencies:
+      '@oxlint/plugins': 1.94.0
+      effect: 4.1.0
+      effect-oxlint: 0.4.0(effect@4.1.0)
 
   '@esbuild/aix-ppc64@0.28.2':
     optional: true
@@ -1071,6 +1091,13 @@ snapshots:
       '@ai-sdk/provider': 4.0.38
       '@ai-sdk/provider-utils': 5.0.81(zod@4.6.7)
       zod: 4.6.7
+
+  effect-oxlint@0.4.0(effect@4.1.0):
+    dependencies:
+      '@oxlint/plugins': 1.94.0
+      effect: 4.1.0
+
+  effect@4.1.0: {}
 
   effect@4.1.4: {}
 

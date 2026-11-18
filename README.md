@@ -7,11 +7,13 @@ anti-slop was created by [Dillon Mulroy](https://github.com/dmmulroy) at [dmmulr
 - **An oxlint Jev plugin with 23 LLM-judged rules.** Each rule is a plain-English yes/no question that a pattern-based linter can't answer, asked of a [Jev](https://typesafe.ai) decision model or any AI SDK chat model. There are two sets:
   - `anti-slop-effect-jev`: 11 Effect review questions, such as `shallow-service`, `swallow-without-capture`, `read-then-write-race`, `network-call-in-transaction`, and, for tests, `test-cannot-fail`.
   - `anti-slop-martinfowler-jev`: 12 of Martin Fowler's code smells from *Refactoring*, such as `feature-envy`, `data-clumps`, `primitive-obsession`, and `middle-man`.
-- More Effect AST rules (`anti-slop-effect`).
+- More Effect AST rules (`anti-slop-effect`), including `no-unbounded-retry`, ported from cevr/effect-oxlint (MIT) to accept Effect 4.1's `Schedule.upTo` bounds.
+- Opt-in XState 5 rules (`anti-slop-xstate`) for repositories that depend on `xstate`.
 - A Martin Fowler AST code-smell bundle (`anti-slop-martinfowler`).
 - Diff rules that judge a whole change set, for smells such as shotgun surgery and scope creep.
 - Four test-honesty rules from [interfere-inc/landmines](https://github.com/interfere-inc/landmines) (MIT), installed from npm as `@interfere/landmines`: `strict-msw`, `no-fixed-sleep`, `no-unsignaled-poll`, and `no-flake-masking`.
-- Nine Effect runtime rules from [cevr/effect-oxlint](https://github.com/cevr/effect-oxlint) (MIT), installed from npm as `oxlint-plugin-effect` in repositories on Effect 4.1 or later, such as `noSilentCatchAll`, `noUnboundedConcurrency`, and `requireSuppressionReason`.
+- Ten Effect runtime rules from [cevr/effect-oxlint](https://github.com/cevr/effect-oxlint) (MIT), installed from npm as `oxlint-plugin-effect` in repositories on Effect 4.1 or later, such as `noSilentCatchAll`, `noUnboundedConcurrency`, and `requireForceKillAfter`.
+- Nine Effect rules from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) (MIT), installed from npm as `@enfect/oxlint` in Effect repositories, such as `throw-in-effect-gen`, `prefer-redacted-config`, and `no-cause-in-http-response`.
 
 See [Jev rules](#jev-rules-llm-judged) and the [rule catalog](#jev-and-diff-rules).
 
@@ -32,7 +34,8 @@ Then ask your coding agent to install anti-slop. The skill does the following:
 - runs `scripts/install.mjs`, which copies the plugin to `tools/oxlint/anti-slop/`;
 - installs `oxlint` and `@oxlint/plugins` at matching versions, and `@interfere/landmines`;
 - merges the plugin into your existing Oxlint or Vite+ config, with every core rule and the four landmines testing rules enabled;
-- enables the Effect rules and the `@effect/tsgo` diagnostics when `effect` is a direct dependency, plus the nine cevr/effect-oxlint rules from `oxlint-plugin-effect` on Effect 4.1 or later;
+- enables the Effect rules, the `@effect/tsgo` diagnostics, and the nine `@enfect/oxlint` rules when `effect` is a direct dependency, plus the ten cevr/effect-oxlint rules from `oxlint-plugin-effect` on Effect 4.1 or later;
+- enables the XState rules when `xstate` is a direct dependency;
 - runs your lint and typecheck.
 
 The Jev rules and diff rules make paid model requests, so the skill sets them up only when you ask.
@@ -56,6 +59,7 @@ The script refuses to overwrite an existing directory. `--force` overrides that 
 git clone --depth 1 https://github.com/K-Mistele/anti-slop /tmp/anti-slop
 mkdir -p tools/oxlint && cp -R /tmp/anti-slop/src tools/oxlint/anti-slop
 npm install --save-dev --save-exact oxlint@1.93.0 @oxlint/plugins@1.93.0 @interfere/landmines@0.1.0
+npm install --save-dev --save-exact @enfect/oxlint@0.10.0 # Effect repositories only
 npm install --save-dev --save-exact oxlint-plugin-effect@0.32.4 # Effect 4.1 or later only
 ```
 
@@ -78,7 +82,9 @@ export default defineConfig({
     { name: "anti-slop-effect", specifier: "./tools/oxlint/anti-slop/effect/index.ts" }, // Effect repositories only
     { name: "anti-slop-martinfowler", specifier: "./tools/oxlint/anti-slop/martinfowler/index.ts" },
     { name: "landmines", specifier: "@interfere/landmines/testing" },
+    { name: "enfect", specifier: "@enfect/oxlint" }, // Effect repositories only
     { name: "effect", specifier: "oxlint-plugin-effect/plugin" }, // Effect 4.1 or later only
+    { name: "anti-slop-xstate", specifier: "./tools/oxlint/anti-slop/xstate/index.ts" }, // xstate repositories only
   ],
   rules: {
     "oxc/no-accumulating-spread": "error",
@@ -118,7 +124,9 @@ export default defineConfig({
     "anti-slop-effect/no-ordie-in-service-construction": "error",
     "anti-slop-effect/no-service-constructor-imports": "error",
     "anti-slop-effect/no-service-parameters": "error",
+    "anti-slop-effect/no-static-effect-service-forwarders": "error",
     "anti-slop-effect/no-test-code-in-src": "error",
+    "anti-slop-effect/no-unbounded-retry": "error",
     "anti-slop-effect/prefer-effect-match": "error",
     "anti-slop-effect/prefer-tagged-error-handling": "error",
     "anti-slop-effect/prefer-yield-service": "error",
@@ -135,6 +143,24 @@ export default defineConfig({
     "effect/noSilentCatchAll": "error",
     "effect/noUnboundedConcurrency": "error",
     "effect/requireSuppressionReason": "error",
+    "effect/requireForceKillAfter": "error",
+
+    "enfect/throw-in-effect-gen": "error",
+    "enfect/effect-promise-vs-trypromise": "error",
+    "enfect/prefer-redacted-config": "error",
+    "enfect/avoid-option-getorthrow": "error",
+    "enfect/effect-run-in-body": "error",
+    "enfect/no-cause-in-http-response": "error",
+    "enfect/no-effect-ignore-then-as": "error",
+    "enfect/avoid-expect-in-if": "error",
+    "enfect/yield-in-for-loop": "error",
+
+    "anti-slop-xstate/no-direct-xstate-create-machine": "error",
+    "anti-slop-xstate/no-direct-xstate-use-selector": "error",
+    "anti-slop-xstate/no-multiple-xstate-hooks": "error",
+    "anti-slop-xstate/no-single-use-xstate-actions": "error",
+    "anti-slop-xstate/no-single-use-xstate-guards": "error",
+    "anti-slop-xstate/require-xstate-event-satisfies": "error",
 
     // Smells are prompts to look, so they warn. message-chains is left off by default.
     "anti-slop-martinfowler/global-data": "warn",
@@ -354,7 +380,7 @@ These four rules come from [interfere-inc/landmines](https://github.com/interfer
 
 ### Effect runtime (`effect`, error)
 
-These nine rules come from [cevr/effect-oxlint](https://github.com/cevr/effect-oxlint) by cevr, under the MIT license. anti-slop does not vendor them: in repositories whose direct `effect` dependency is 4.1 or later, install `oxlint-plugin-effect` from npm and register its `plugin` entry point as the `effect` plugin. The package imports `effect` at runtime, so Effect 3 and 4.0 repositories skip it. Use only these nine, not the package's recommended preset, which also enables rules that duplicate anti-slop, landmines, or `@effect/tsgo` checks, bans ordinary language features such as `null`, ternaries, `async`, and `throw`, and bans the SAFETY comments that `require-safety-comment-for-type-assertion` requires. `noUnboundedRetry` stays off because version 0.32.4 reports retries bounded with `Schedule.upTo`, and `requireForceKillAfter` stays off because it reports every `ChildProcess.make`.
+These ten rules come from [cevr/effect-oxlint](https://github.com/cevr/effect-oxlint) by cevr, under the MIT license. anti-slop does not vendor them: in repositories whose direct `effect` dependency is 4.1 or later, install `oxlint-plugin-effect` from npm and register its `plugin` entry point as the `effect` plugin. The package imports `effect` at runtime, so Effect 3 and 4.0 repositories skip it. Use only these ten, not the package's recommended preset, which also enables rules that duplicate anti-slop, landmines, or `@effect/tsgo` checks, bans ordinary language features such as `null`, ternaries, `async`, and `throw`, and bans the SAFETY comments that `require-safety-comment-for-type-assertion` requires. `noUnboundedRetry` stays off because version 0.32.4 reports retries bounded with `Schedule.upTo` or a later `Effect.timeout`; use `anti-slop-effect/no-unbounded-retry`, a corrected port, instead.
 
 | Rule | What it checks |
 | --- | --- |
@@ -367,6 +393,24 @@ These nine rules come from [cevr/effect-oxlint](https://github.com/cevr/effect-o
 | `noSilentCatchAll` | `catch` or `catchCause` handlers that turn every failure into `Effect.void`. |
 | `noUnboundedConcurrency` | `concurrency: "unbounded"` over a collection that can grow. |
 | `requireSuppressionReason` | Lint, Effect, and TypeScript suppressions that do not name their target and give a ` -- ` reason. |
+| `requireForceKillAfter` | `ChildProcess.make` without `forceKillAfter`, so a child that ignores SIGTERM holds its scope open forever when interrupted. |
+
+### Effect conventions (`enfect`, error)
+
+These nine rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) by Marc Suesser, under the MIT license. anti-slop does not vendor them: in Effect repositories, install `@enfect/oxlint` from npm and register it as the `enfect` plugin, a name that cannot collide with cevr's `effect` plugin. The package brings its own `effect`, so it works with any Effect version. Its other rules duplicate anti-slop, `@effect/tsgo`, or cevr checks, or ban ordinary language features.
+
+| Rule | What it checks |
+| --- | --- |
+| `throw-in-effect-gen` | `throw` inside `Effect.gen`, `Effect.fn`, or `Effect.fnUntraced`, which becomes a defect instead of a typed failure. |
+| `effect-promise-vs-trypromise` | `Effect.promise`, which turns a rejection into a defect. Use `Effect.tryPromise` with a `catch`. |
+| `prefer-redacted-config` | Secret-named configuration read as a plain string instead of a redacted value. |
+| `avoid-option-getorthrow` | Any `.getOrThrow` access, which turns a modeled absence or failure back into a throw. |
+| `effect-run-in-body` | `Effect.runSync`, `Effect.runPromise`, and `Effect.runFork`. Turn it off for entry points and test harnesses. |
+| `no-cause-in-http-response` | `Cause.pretty`, `Cause.squash`, or a caught error rendered into an HTTP response body. |
+| `no-effect-ignore-then-as` | `Effect.ignore` immediately before `Effect.as`, which only hides the failure. |
+| `avoid-expect-in-if` | `expect` inside an `if`, which passes when the branch is skipped. |
+| `yield-in-for-loop` | `yield*` inside a `for` loop instead of `Effect.forEach` with an explicit concurrency. |
+
 ### Effect (`anti-slop-effect`, error)
 
 | Rule | What it checks |
@@ -378,13 +422,28 @@ These nine rules come from [cevr/effect-oxlint](https://github.com/cevr/effect-o
 | [`no-ordie-in-service-construction`](src/effect/rules/no-ordie-in-service-construction.ts) | Disallow `Effect.orDie` while constructing a service (its make, its static layers, or Layer.effect/unwrap arguments) and `Layer.orDie` anywhere. |
 | [`no-service-constructor-imports`](src/effect/rules/no-service-constructor-imports.ts) | Disallow project-local `make<CapabilityName>` imports outside test and spec files. |
 | [`no-service-parameters`](src/effect/rules/no-service-parameters.ts) | Disallow function parameters typed as Context.Context, ManagedRuntime.ManagedRuntime, Layer.Layer, or a Context.Service declared in the same file. |
+| [`no-static-effect-service-forwarders`](src/effect/rules/no-static-effect-service-forwarders.ts) | Disallow static members of a service class that only yield the service and call one of its methods; callers should `yield*` the service. |
 | [`no-test-code-in-src`](src/effect/rules/no-test-code-in-src.ts) | Disallow test files, imports from test directories, and test-named exports such as `layerTest` inside production source directories. |
+| [`no-unbounded-retry`](src/effect/rules/no-unbounded-retry.ts) | Require `Effect.retry`, `Effect.retryOrElse`, `Stream.retry`, and `HttpClient.retryTransient` policies to stop, through `times`, `Schedule.upTo`, `Schedule.max` with a bounded schedule, or a later `Effect.timeout`. Ported from cevr/effect-oxlint's `noUnboundedRetry` (MIT). |
 | [`prefer-effect-match`](src/effect/rules/prefer-effect-match.ts) | Use Match from Effect for chained literal ternaries over the same value. |
 | [`prefer-tagged-error-handling`](src/effect/rules/prefer-tagged-error-handling.ts) | Use Effect tagged error handlers instead of `Predicate.isTagged` checks in a broad catch handler. |
 | [`prefer-yield-service`](src/effect/rules/prefer-yield-service.ts) | Disallow `yield* Effect.context()` results that are passed back to Effect.provide, Effect.provideContext, Layer.provide, or Layer.succeedContext. |
 | [`require-cause-when-narrowing`](src/effect/rules/require-cause-when-narrowing.ts) | Require Effect.mapError/catch/catchAll/catchCause/orElse handlers that construct a new error to keep the original error as `cause`. |
 | [`require-operation-span`](src/effect/rules/require-operation-span.ts) | Require each operation returned by a Context.Service make to be traced with Effect.fn("name") or Effect.withSpan. |
 | [`require-service-make-layer`](src/effect/rules/require-service-make-layer.ts) | Require Context.Service classes to define `make` and `static layer = Layer.effect(this, this.make)`, with variant layers derived from them. |
+
+### XState (`anti-slop-xstate`, error)
+
+Enable these only in repositories that depend on `xstate` directly.
+
+| Rule | What it checks |
+| --- | --- |
+| [`no-direct-xstate-create-machine`](src/xstate/rules/no-direct-xstate-create-machine.ts) | `createMachine(...)` instead of `setup({ ... }).createMachine(...)`. |
+| [`no-direct-xstate-use-selector`](src/xstate/rules/no-direct-xstate-use-selector.ts) | `useSelector` from `@xstate/react`. Read state from the snapshot of the component's actor hook. |
+| [`no-multiple-xstate-hooks`](src/xstate/rules/no-multiple-xstate-hooks.ts) | More than one `useMachine`, `useActor`, or `useActorRef` call in one component. |
+| [`no-single-use-xstate-actions`](src/xstate/rules/no-single-use-xstate-actions.ts) | A `setup({ actions })` entry the machine references once. |
+| [`no-single-use-xstate-guards`](src/xstate/rules/no-single-use-xstate-guards.ts) | A `setup({ guards })` entry the machine references once. |
+| [`require-xstate-event-satisfies`](src/xstate/rules/require-xstate-event-satisfies.ts) | `send({ type: ... })` without `satisfies <Event>` in files that import XState. |
 
 ### Martin Fowler AST (`anti-slop-martinfowler`, warn)
 
@@ -422,4 +481,4 @@ pnpm check       # oxlint with the tsrs typecheck, every RuleTester suite, and t
 
 ## License
 
-MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license. The `landmines` testing rules are the MIT-licensed [`@interfere/landmines`](https://github.com/interfere-inc/landmines) npm package, and the `effect` runtime rules are the MIT-licensed [`oxlint-plugin-effect`](https://github.com/cevr/effect-oxlint) npm package; both are used as dependencies.
+MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license. The `landmines` testing rules are the MIT-licensed [`@interfere/landmines`](https://github.com/interfere-inc/landmines) npm package, the `effect` runtime rules are the MIT-licensed [`oxlint-plugin-effect`](https://github.com/cevr/effect-oxlint) npm package, and the `enfect` rules are the MIT-licensed [`@enfect/oxlint`](https://github.com/mpsuesser/enfect) npm package; all three are used as dependencies. [`src/effect/rules/no-unbounded-retry.ts`](src/effect/rules/no-unbounded-retry.ts) is ported from cevr/effect-oxlint's `noUnboundedRetry` under its MIT license.

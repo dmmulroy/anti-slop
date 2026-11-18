@@ -7,7 +7,9 @@ import { noManualTaggedTypeRule } from "./rules/no-manual-tagged-type.ts";
 import { noOrDieInServiceConstructionRule } from "./rules/no-ordie-in-service-construction.ts";
 import { noServiceConstructorImportsRule } from "./rules/no-service-constructor-imports.ts";
 import { noServiceParametersRule } from "./rules/no-service-parameters.ts";
+import { noStaticEffectServiceForwardersRule } from "./rules/no-static-effect-service-forwarders.ts";
 import { noTestCodeInSrcRule } from "./rules/no-test-code-in-src.ts";
+import { noUnboundedRetryRule } from "./rules/no-unbounded-retry.ts";
 import { preferEffectMatchRule } from "./rules/prefer-effect-match.ts";
 import { preferTaggedErrorHandlingRule } from "./rules/prefer-tagged-error-handling.ts";
 import { preferYieldServiceRule } from "./rules/prefer-yield-service.ts";
@@ -26,7 +28,9 @@ const antiSlopEffectPlugin = eslintCompatPlugin({
 		"no-ordie-in-service-construction": noOrDieInServiceConstructionRule,
 		"no-service-constructor-imports": noServiceConstructorImportsRule,
 		"no-service-parameters": noServiceParametersRule,
+		"no-static-effect-service-forwarders": noStaticEffectServiceForwardersRule,
 		"no-test-code-in-src": noTestCodeInSrcRule,
+		"no-unbounded-retry": noUnboundedRetryRule,
 		"prefer-effect-match": preferEffectMatchRule,
 		"prefer-tagged-error-handling": preferTaggedErrorHandlingRule,
 		"prefer-yield-service": preferYieldServiceRule,
