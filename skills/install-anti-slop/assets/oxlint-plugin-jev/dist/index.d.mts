@@ -1,4 +1,4 @@
-import { a as JevPlugin, c as JevRulesPlugin, i as JevOptions, l as JudgeOptions, o as JevPluginOptions, r as CiBehavior, s as JevRule, u as Target } from "./types-k7gzO5Vl.mjs";
+import { a as JevPlugin, c as JevRulesPlugin, i as JevOptions, l as JudgeOptions, o as JevPluginOptions, r as CiBehavior, s as JevRule, u as Target } from "./types-BhUfjfW9.mjs";
 //#region src/index.d.ts
 declare const plugin: JevPlugin;
 /**

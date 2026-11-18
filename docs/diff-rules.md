@@ -8,9 +8,9 @@ question about the change. Yes means the change violates the rule.
 
 | Kind | Looks at | Answered by | Runs in |
 | --- | --- | --- | --- |
-| AST rules (`anti-slop/*`, `anti-slop-effect/*`) | One syntax node at a time | Deterministic code in Oxlint | Editor, `lint`, `check:fast`, `check:full`, CI |
-| Jev rules (`anti-slop-effect-jev/*`, `anti-slop-martinfowler-jev/*`, see [jev.md](jev.md)) | One function, call, or file | A decision model or LLM judge, one request per file per plugin | `check:fast` (changed files and functions), `check:full` (all files) |
-| Diff rules (`diff-rules/run.ts`, this page) | The whole change: every touched file, the commits, and their history | A decision model, a chat model, or a CLI agent | `check:full`, optionally a pre-push hook, CI on pull requests |
+| AST rules (`anti-slop/*`, `anti-slop-effect/*`) | One syntax node at a time | Deterministic code in Oxlint | Editor, pre-commit, pre-push, CI |
+| Jev rules (`anti-slop-effect-jev/*`, `anti-slop-martinfowler-jev/*`, see [jev.md](jev.md)) | One function, call, or file | A decision model or LLM judge, one request per file per plugin | Pre-push and CI on changed lines; `modes/lint.ts full` on everything |
+| Diff rules (`diff-rules/run.ts`, this page) | The whole change: every touched file, the commits, and their history | A decision model, a chat model, or a CLI agent | CI on pull requests, optionally a pre-push hook |
 
 Use an AST rule whenever the pattern is syntactic, because it is free, exact, and instant. Use a
 Jev rule when the judgment needs to read code but fits inside one file. Use a diff rule only when
@@ -38,9 +38,10 @@ signal.
 
 `run.ts` builds the change set with git and sends it as text:
 
-- **Change set.** By default (`check:full`), everything since the merge-base of `HEAD` with
-  `origin/HEAD`, falling back to `origin/main`, `main`, `origin/master`, then `master`, plus staged,
-  unstaged, and untracked changes. `--base <ref>` picks another base. `--committed` judges only the
+- **Change set.** By default, everything since the merge-base of `HEAD` with
+  `origin/HEAD`, falling back to `origin/main`, `origin/master`, `main`, then `master` (the same
+  default base as the [rule modes](./modes.md)), plus staged, unstaged, and untracked changes.
+  `--base <ref>`, or `ANTI_SLOP_BASE`, picks another base. `--committed` judges only the
   commits since the base, which suits a pre-push hook. `--staged` judges the index, which suits a
   pre-commit hook. `--working` judges uncommitted changes against `HEAD`. Before the first commit
   everything staged or untracked is new. When no base branch exists, uncommitted changes are judged
@@ -286,30 +287,18 @@ copy outside it.
 {
   "scripts": {
     "lint": "oxlint",
-    "lint:jev": "node tools/oxlint/anti-slop/jev/lint-changed.ts -c oxlint.jev.config.ts",
-    "lint:jev:full": "node tools/oxlint/anti-slop/jev/lint-changed.ts --all -c oxlint.jev.config.ts",
-    "lint:diff": "node tools/oxlint/anti-slop/diff-rules/run.ts",
-    "check:fast": "npm run lint:jev",
-    "check:full": "npm run lint:jev:full && npm run lint:diff"
+    "lint:push": "node tools/oxlint/anti-slop/modes/lint.ts push",
+    "lint:diff": "node tools/oxlint/anti-slop/diff-rules/run.ts"
   }
 }
 ```
 
-`check:fast` stays cheap: AST rules plus Jev on changed files, and no diff rules. `check:full` runs
-AST rules and Jev on everything, then the diff rules against the base. Add your typecheck and tests
-to both.
-
-### Pre-push hook
-
-```sh
-#!/bin/sh
-# .git/hooks/pre-push, or the equivalent husky/lefthook entry
-exec node tools/oxlint/anti-slop/diff-rules/run.ts --committed
-```
-
-`--committed` judges what is being pushed, without uncommitted edits. Only `error` rules block the
-push; add `--fail` to block on warnings too. A hook re-run on an unchanged branch is answered from
-the cache. For a pre-commit hook use `--staged`.
+The recommended split ([docs/modes.md](./modes.md#hooks)) runs the free rules before committing,
+adds the Jev rules on changed lines before pushing, and adds the diff rules in CI. To also judge the
+diff before pushing, add `node tools/oxlint/anti-slop/diff-rules/run.ts --committed` to the pre-push
+hook: `--committed` judges what is being pushed, without uncommitted edits. Only `error` rules
+block; add `--fail` to block on warnings too. A re-run on an unchanged branch is answered from the
+cache.
 
 ### CI on pull requests
 
@@ -337,7 +326,7 @@ few hundred commits), and set the backend's key as a secret with `ci: "fail"` in
 
 ## Tuning cutoffs
 
-- Start every rule at `warn`, run `check:full` on a handful of recent branches with `--json`, and
+- Start every rule at `warn`, run `run.ts` on a handful of recent branches with `--json`, and
   look at each rule's `probability` next to whether a reviewer would agree.
 - Raise a rule's cutoff when it fires on changes you would accept; lower it when it misses known
   cases. Promote a rule to `error` only once its false positives are rare, since `error` rules block

@@ -1,8 +1,8 @@
 import { a as locationCandidates, c as probabilityOf, d as verdictAsk, i as locationAsk, l as selectedLocation, n as isValidAnswer, o as locationOfLine, r as locates, s as messageOf, t as buildRequest, u as truncateSnippet } from "./jev-BC3UITJZ.mjs";
 import { askModel } from "./sync-jev.mjs";
-import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { changedLines, overlaps, ruleMode, settingsBase } from "./changed.mjs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 //#region src/cache.ts
 const defaultCacheDir = () => path.join(process.cwd(), "node_modules", ".cache", "oxlint-plugin-jev");
 /** One cached answer, or null when the entry is missing or not shaped like one. */
@@ -187,133 +187,6 @@ function backendFor(options) {
 	};
 }
 //#endregion
-//#region src/changed.ts
-const git = (cwd, args) => execFileSync("git", [
-	"-c",
-	"core.quotePath=false",
-	...args
-], {
-	cwd,
-	encoding: "utf8",
-	maxBuffer: 268435456,
-	stdio: [
-		"ignore",
-		"pipe",
-		"pipe"
-	]
-});
-const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
-/** Parses `git diff -U0` output into the new-side line numbers each file changed. */
-function parseDiff(diff) {
-	const files = /* @__PURE__ */ new Map();
-	let current = null;
-	for (const line of diff.split("\n")) {
-		if (line.startsWith("+++ ")) {
-			const target = line.slice(4);
-			current = null;
-			if (target.startsWith("b/")) {
-				current = files.get(target.slice(2)) ?? /* @__PURE__ */ new Set();
-				files.set(target.slice(2), current);
-			}
-			continue;
-		}
-		const hunk = current === null ? null : HUNK.exec(line);
-		if (hunk === null || current === null) continue;
-		const start = Number(hunk[1]);
-		const count = hunk[2] === void 0 ? 1 : Number(hunk[2]);
-		if (count === 0) {
-			current.add(start);
-			current.add(start + 1);
-		}
-		for (let offset = 0; offset < count; offset++) current.add(start + offset);
-	}
-	return files;
-}
-const repoByDir = /* @__PURE__ */ new Map();
-const changesByRoot = /* @__PURE__ */ new Map();
-function repoChanges(dir, base, warn) {
-	const dirKey = `${base}\0${dir}`;
-	if (repoByDir.has(dirKey)) return repoByDir.get(dirKey) ?? null;
-	let changes = null;
-	try {
-		const root = realpathSync(git(dir, ["rev-parse", "--show-toplevel"]).trim());
-		const rootKey = `${base}\0${root}`;
-		if (changesByRoot.has(rootKey)) changes = changesByRoot.get(rootKey) ?? null;
-		else {
-			const diff = git(root, [
-				"diff",
-				"-U0",
-				"--no-color",
-				"--no-ext-diff",
-				"--no-renames",
-				"--src-prefix=a/",
-				"--dst-prefix=b/",
-				base,
-				"--"
-			]);
-			const files = new Map(parseDiff(diff));
-			const untracked = git(root, [
-				"ls-files",
-				"--others",
-				"--exclude-standard",
-				"-z"
-			]);
-			for (const file of untracked.split("\0").filter(Boolean)) files.set(file, "all");
-			changes = {
-				root,
-				files
-			};
-			changesByRoot.set(rootKey, changes);
-		}
-	} catch (error) {
-		warn(`changedOnly could not diff against ${base} in ${dir}, checking every line: ${messageOf(error)}`);
-	}
-	repoByDir.set(dirKey, changes);
-	return changes;
-}
-const flag = (name) => {
-	const value = (process.env[name] ?? "").trim().toLowerCase();
-	if ([
-		"1",
-		"true",
-		"yes"
-	].includes(value)) return true;
-	if ([
-		"0",
-		"false",
-		"no"
-	].includes(value)) return false;
-};
-/** Whether changed-lines mode is on, and the ref it diffs against. Env vars override options. */
-function changedMode(options) {
-	return {
-		on: flag("JEV_CHANGED_ONLY") ?? options.changedOnly,
-		base: (process.env.JEV_CHANGED_BASE ?? "").trim() || options.changedBase
-	};
-}
-/**
-* The lines of a file changed against `base`, computed once per repository per process. An empty
-* set means the file is unchanged. When git cannot answer, every line counts as changed, so a
-* broken diff never silently turns checks off.
-*/
-function changedLines(filename, base, warn) {
-	let file;
-	try {
-		file = realpathSync(filename);
-	} catch {
-		return "all";
-	}
-	const changes = repoChanges(path.dirname(file), base, warn);
-	if (changes === null) return "all";
-	const relative = path.relative(changes.root, file).split(path.sep).join("/");
-	return changes.files.get(relative) ?? /* @__PURE__ */ new Set();
-}
-function overlaps(lines, start, end) {
-	if (lines === "all") return true;
-	for (let line = start; line <= end; line++) if (lines.has(line)) return true;
-	return false;
-}
-//#endregion
 //#region src/options.ts
 const TARGET_NODE_TYPES = {
 	function: [
@@ -347,9 +220,7 @@ const DEFAULTS = {
 	maxMatchesPerFile: 25,
 	maxSnippetChars: 4e3,
 	model: "jev-latest",
-	longContext: false,
-	changedOnly: false,
-	changedBase: "HEAD"
+	longContext: false
 };
 const SCHEMA = {
 	type: "object",
@@ -387,11 +258,6 @@ const SCHEMA = {
 					minLength: 1
 				}
 			}
-		},
-		changedOnly: { type: "boolean" },
-		changedBase: {
-			type: "string",
-			minLength: 1
 		},
 		rules: {
 			type: "array",
@@ -584,18 +450,14 @@ function startPass(context, member) {
 		warnOnce(`missing-key:${chosen.reason}`, `${chosen.reason}, skipping Jev checks`);
 		return "skip";
 	}
-	let changed = null;
-	const mode = changedMode(options);
-	if (mode.on) {
-		changed = changedLines(context.filename, mode.base, (message) => warnOnce(`changed:${message}`, message));
-		if (changed !== "all" && changed.size === 0) return "skip";
-	}
+	const base = settingsBase(context.settings);
+	let changed;
 	return {
 		filename: context.filename,
 		options,
 		backend: chosen.backend,
 		backendId: chosen.id,
-		changed,
+		changedLines: () => changed ??= changedLines(context.filename, base, (message) => warnOnce(`changed:${message}`, message)),
 		matches: [],
 		dropped: 0,
 		outcome: null,
@@ -698,8 +560,10 @@ function visitorsFor(group, member, context, nodeTypes) {
 		if (pass === null) return;
 		const rules = nodeTypeIndex(member.rules(pass.options)).get(type);
 		if (rules === void 0) return;
+		const lines = ruleMode(context.settings, context.id, "changed") === "changed" ? pass.changedLines() : "all";
+		if (lines !== "all" && lines.size === 0) return;
 		for (const rule of rules) {
-			if (pass.changed !== null && rule.target !== "file" && !overlaps(pass.changed, node.loc.start.line, node.loc.end.line)) continue;
+			if (lines !== "all" && rule.target !== "file" && !overlaps(lines, node.loc.start.line, node.loc.end.line)) continue;
 			if (pass.matches.length >= pass.options.maxMatchesPerFile) {
 				pass.dropped += 1;
 				continue;

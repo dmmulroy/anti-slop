@@ -58,6 +58,9 @@ function parseArgs(argv: ReadonlyArray<string>): RunOptions {
     throw new Error(`--backend must be one of ${BACKEND_NAMES.join(", ")}`);
   }
   const named: { backend?: BackendName } = backend === undefined ? {} : { backend };
+  // The same override the oxlint rules' changed-lines mode reads.
+  const baseRef = values.base ?? (process.env.ANTI_SLOP_BASE?.trim() || undefined);
+  const base: { base?: string } = baseRef === undefined ? {} : { base: baseRef };
   return {
     cwd: process.cwd(),
     env: process.env,
@@ -65,7 +68,7 @@ function parseArgs(argv: ReadonlyArray<string>): RunOptions {
     fail,
     json,
     ...named,
-    ...(values.base === undefined ? {} : { base: values.base }),
+    ...base,
     ...(values.configPath === undefined ? {} : { configPath: values.configPath }),
     ...(values.model === undefined ? {} : { model: values.model }),
     ...(values.command === undefined ? {} : { command: values.command }),

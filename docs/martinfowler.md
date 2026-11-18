@@ -199,72 +199,41 @@ matches across all of its rules in source order. `martinFowlerJevOptions` raises
 files with many functions, raise it further in `jev-plugin.ts` or turn function rules you do not
 need `"off"`.
 
-### Enable the plugin on changed code only
+### Enable the plugin
 
-Register `anti-slop-martinfowler-jev` in the base config without enabling its rules, so the editor
-never calls Jev, and enable every smell at `"warn"` in the jev overlay. Turn them off for test files.
+Register `anti-slop-martinfowler-jev` and enable every smell at `"warn"` through
+`defineAntiSlopConfig` ([docs/modes.md](./modes.md)), which keeps the rules off unless
+`ANTI_SLOP_JEV=1` (so the editor never calls Jev) and asks only about changed lines. Turn them off
+for test files.
 
 ```ts
 // oxlint.config.ts
-jsPlugins: [
-  {
-    name: "anti-slop-martinfowler-jev",
-    specifier: "./tools/oxlint/anti-slop/martinfowler/jev-plugin.ts",
-  },
-],
-```
-
-```ts
-// oxlint.jev.config.ts
-import type { OxlintConfig } from "oxlint";
-
-import baseConfig from "./oxlint.config.ts";
-import {
-  martinFowlerJevPluginName,
-  martinFowlerJevRules,
-} from "./tools/oxlint/anti-slop/martinfowler/jev-rules.ts";
+import { martinFowlerJevPluginName, martinFowlerJevRules } from "./tools/oxlint/anti-slop/martinfowler/jev-rules.ts";
+import { defineAntiSlopConfig } from "./tools/oxlint/anti-slop/modes/config.ts";
 
 const severities = (severity: "error" | "warn" | "off") =>
   Object.fromEntries(martinFowlerJevRules.map((rule) => [`${martinFowlerJevPluginName}/${rule.id}`, severity]));
 
-// Widened so `base.rules` and `base.overrides` typecheck even when the base sets neither.
-const base: OxlintConfig = baseConfig;
-const testFiles = ["**/*.test.*", "**/*.spec.*", "test/**", "tests/**"];
-
-// An annotation rather than `defineConfig`: TypeScript 7 reports this spread as "a union type that
-// is too complex to represent" when inferred through `defineConfig`.
-const config: OxlintConfig = {
-  ...base,
+export default defineAntiSlopConfig({
+  jsPlugins: [
+    { name: "anti-slop-martinfowler-jev", specifier: "./tools/oxlint/anti-slop/martinfowler/jev-plugin.ts" },
+  ],
   rules: {
-    ...base.rules,
     ...severities("warn"),
     // Per-smell severity, for example:
     // "anti-slop-martinfowler-jev/comments": "off",
   },
-  overrides: [...(base.overrides ?? []), { files: testFiles, rules: severities("off") }],
-};
-
-export default config;
+  overrides: [{ files: ["**/*.test.*", "**/*.spec.*", "test/**", "tests/**"], rules: severities("off") }],
+});
 ```
 
-Run the overlay through `check:fast` (changed files, and with `JEV_CHANGED_ONLY=1` only changed
-functions) and `check:full` (everything), using `lint-changed.ts` as described in
-[`docs/jev.md`](./jev.md#lint-only-what-changed):
+Run it before pushing and in CI with `node tools/oxlint/anti-slop/modes/lint.ts push`, and on
+everything with `modes/lint.ts full`.
 
-```json
-{
-  "scripts": {
-    "check:fast": "node tools/oxlint/anti-slop/jev/lint-changed.ts -c oxlint.jev.config.ts",
-    "check:full": "node tools/oxlint/anti-slop/jev/lint-changed.ts --all -c oxlint.jev.config.ts"
-  }
-}
-```
-
-If the overlay also enables the Effect jev plugin, merge both sets of rules into one overlay: the
-Effect questions report errors and the smells report warnings. The two plugins send separate
-requests, so a file costs up to two requests; [`docs/jev.md`](./jev.md#two-plugins-or-one) shows
-how to build one plugin from both presets for one request per file.
-
+If the config also enables the Effect jev plugin, the Effect questions report errors and the smells
+report warnings. The two plugins send separate requests, so a file costs up to two requests;
+[`docs/jev.md`](./jev.md#two-plugins-or-one) shows how to build one plugin from both presets for one
+request per file.
 ### Editing the preset
 
 Change a question's leading carve-out sentence when a legitimate pattern keeps firing, and keep one

@@ -1,11 +1,12 @@
 import { presets } from "@effect/tsgo/oxlint-presets";
-import { defineConfig } from "oxlint";
+
+import { defineAntiSlopConfig } from "./src/modes/config.ts";
 
 const effectTsgoRules = Object.values(presets).flatMap((preset) =>
 	Object.keys(preset.rules ?? {}),
 );
 
-export default defineConfig({
+export default defineAntiSlopConfig({
 	extends: Object.values(presets),
 	ignorePatterns: ["src/vendor/**"],
 	jsPlugins: [

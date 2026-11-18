@@ -36,6 +36,7 @@ Then ask your coding agent to install anti-slop. The skill does the following:
 - merges the plugin into your existing Oxlint or Vite+ config, with every core rule and the four landmines testing rules enabled;
 - enables the Effect rules, the `@effect/tsgo` diagnostics, and the nine `@enfect/oxlint` rules when `effect` is a direct dependency, plus the ten cevr/effect-oxlint rules from `oxlint-plugin-effect` on Effect 4.1 or later;
 - enables the XState rules when `xstate` is a direct dependency;
+- adds a pre-commit hook (free rules on staged files) and a pre-push hook (free rules plus Jev rules on changed lines) with your existing hook tool;
 - runs your lint and typecheck.
 
 The Jev rules and diff rules make paid model requests, so the skill sets them up only when you ask.
@@ -69,12 +70,12 @@ Keep `src/vendor/eslint-stylistic/LICENSE` and `UPSTREAM.md` with the copy, beca
 
 ## Configure
 
-The following `oxlint.config.ts` enables the core rules, the landmines testing rules, the Effect rules, and the Fowler bundle. The same `ignorePatterns`, `jsPlugins`, and `rules` work in `.oxlintrc.json` or under `lint` in a Vite+ config.
+The following `oxlint.config.ts` enables the core rules, the landmines testing rules, the Effect rules, and the Fowler bundle. The same `ignorePatterns`, `jsPlugins`, and `rules` work in `.oxlintrc.json` or under `lint` in a Vite+ config, without rule modes.
 
 ```ts
-import { defineConfig } from "oxlint";
+import { defineAntiSlopConfig } from "./tools/oxlint/anti-slop/modes/config.ts";
 
-export default defineConfig({
+export default defineAntiSlopConfig({
   // Do not lint the vendored plugin or installed agent assets. Add any other agent directories you use.
   ignorePatterns: [".agents/**", ".claude/**", ".cursor/**", "tools/oxlint/**"],
   jsPlugins: [
@@ -97,7 +98,8 @@ export default defineConfig({
     "anti-slop/no-disabled-type-assertion-rules": "error",
     "anti-slop/no-known-value-widening": "error",
     "anti-slop/no-module-mocking": "error",
-    "anti-slop/no-object-parameters": "error",
+    // Only lines changed on the branch: a ratchet for a rule the codebase does not pass yet.
+    "anti-slop/no-object-parameters": { level: "error", mode: "changed" },
     "anti-slop/no-reduce-accumulator-copy": "error",
     "anti-slop/no-reflect-apply": "error",
     "anti-slop/no-reflect-get": "error",
@@ -174,6 +176,8 @@ export default defineConfig({
 });
 ```
 
+Each rule checks the whole file by default. `{ level, mode: "changed" }` checks only lines changed on the branch (against the merge base with the default branch), which ignores old violations and checks new code; Jev rules default to that mode. `defineAntiSlopConfig` turns the modes into a standard Oxlint config. Built-in Oxlint rules and `effecttsgo/*` always check every line. [docs/modes.md](docs/modes.md) covers modes, the pre-commit and pre-push hooks, and CI.
+
 Effect repositories should also run every `@effect/tsgo` diagnostic as an error. Those diagnostics are type-aware and run on the Effect-patched tsrs through `effect-tsgo --tsrs-lint oxlint`, which this repository's `lint` script uses with `--type-check` so the same tsrs pass also typechecks, with no `tsc`; tsrs mode is experimental, and the skill falls back to `oxlint-tsgolint` when it fails. The skill sets this up, and [`oxlint.config.ts`](oxlint.config.ts) in this repository shows the configuration.
 
 ## What the rules catch
@@ -230,46 +234,30 @@ node <skill-directory>/scripts/install.mjs --jev
 npm install --save-dev ./tools/oxlint/oxlint-plugin-jev   # brings ai, @ai-sdk/typesafe-ai, zod, synckit
 ```
 
-Register both plugins in the base config without enabling any of their rules. That way the editor and plain `oxlint` runs never send a request:
+Register both plugins and enable their questions in the same `oxlint.config.ts`, choosing a severity for each one. A rule set to `"off"` sends nothing. `defineAntiSlopConfig` keeps the Jev rules off unless `ANTI_SLOP_JEV=1`, so the editor and plain `oxlint` runs never send a request, and asks only about changed lines unless a rule says `mode: "all"`:
 
 ```ts
-// oxlint.config.ts, in jsPlugins
-{ name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" },
-{ name: "anti-slop-martinfowler-jev", specifier: "./tools/oxlint/anti-slop/martinfowler/jev-plugin.ts" },
-```
-
-Enable the questions in an overlay config and choose a severity for each one. A rule set to `"off"` sends nothing.
-
-```ts
-// oxlint.jev.config.ts
-import type { OxlintConfig } from "oxlint";
-
-import baseConfig from "./oxlint.config.ts";
-
-// Spread the base instead of using `extends`: Oxlint rejects relative jsPlugins that arrive through `extends`.
-const base: OxlintConfig = baseConfig;
-
-const baseOverrides = base.overrides ?? [];
-
-const testFiles = ["**/*.test.*", "**/*.spec.*", "test/**", "tests/**"];
-
-const config: OxlintConfig = {
-  ...base,
+// oxlint.config.ts
+export default defineAntiSlopConfig({
+  jsPlugins: [
+    // ...the plugins above
+    { name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" },
+    { name: "anti-slop-martinfowler-jev", specifier: "./tools/oxlint/anti-slop/martinfowler/jev-plugin.ts" },
+  ],
   rules: {
-    ...base.rules,
+    // ...the rules above
     "anti-slop-effect-jev/error-as-value": "error",
     "anti-slop-effect-jev/shallow-service": "error",
     "anti-slop-effect-jev/swallow-without-capture": "error",
     "anti-slop-effect-jev/read-then-write-race": "warn",
     "anti-slop-effect-jev/cache-in-method": "off",
     "anti-slop-martinfowler-jev/feature-envy": "warn",
-    "anti-slop-martinfowler-jev/primitive-obsession": "warn",
+    "anti-slop-martinfowler-jev/primitive-obsession": { level: "warn", mode: "all" },
     "anti-slop-martinfowler-jev/comments": "off",
   },
   overrides: [
-    ...baseOverrides,
     {
-      files: testFiles,
+      files: ["**/*.test.*", "**/*.spec.*", "test/**", "tests/**"],
       rules: {
         "anti-slop-effect-jev/error-as-value": "off",
         "anti-slop-effect-jev/shallow-service": "off",
@@ -278,27 +266,15 @@ const config: OxlintConfig = {
       },
     },
   ],
-};
-
-export default config;
+});
 ```
 
-Use `jev/lint-changed.ts` to lint only the files changed in the working tree. Within those files, it asks Jev only about the functions you changed:
-
-```json
-{
-  "scripts": {
-    "lint:jev": "node tools/oxlint/anti-slop/jev/lint-changed.ts -c oxlint.jev.config.ts",
-    "lint:jev:full": "node tools/oxlint/anti-slop/jev/lint-changed.ts --all -c oxlint.jev.config.ts"
-  }
-}
-```
-
+Run them with the pre-push and CI command, `node tools/oxlint/anti-slop/modes/lint.ts push` ([docs/modes.md](docs/modes.md)).
 Without credentials, Jev prints a warning and skips its checks. Under `CI`, both plugins fail instead, because they set `ci: "fail"`. [docs/jev.md](docs/jev.md) covers judge mode, combining both plugins into one request per file, CI, and tuning. [docs/martinfowler.md](docs/martinfowler.md) covers the smells.
 
 ## Diff rules
 
-Diff rules judge the whole branch for problems that span files or show up only in git history: `shotgun-surgery`, `divergent-change`, `duplicated-code`, and `scope-creep`. Every request costs money, so run them in `check:full` only, not on every save:
+Diff rules judge the whole branch for problems that span files or show up only in git history: `shotgun-surgery`, `divergent-change`, `duplicated-code`, and `scope-creep`. Every request costs money, so run them in CI ([docs/modes.md](docs/modes.md#ci)), not on every save:
 
 ```sh
 node tools/oxlint/anti-slop/diff-rules/run.ts [--base <ref>] [--committed|--staged|--working] \

@@ -5,7 +5,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_EXCLUDES } from "./config.ts";
-import { collectChanges, historySummary, type ChangeSet } from "./git.ts";
+import { DEFAULT_BRANCHES } from "oxlint-plugin-jev/changed";
+import { BASE_CANDIDATES, collectChanges, historySummary, type ChangeSet } from "./git.ts";
 
 // Keep the developer's git configuration out of the scratch repositories.
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
@@ -65,6 +66,21 @@ test("diffs a feature branch against its merge-base with main and lists its comm
   assert.deepEqual(change.commits.map((item) => item.subject), ["add b"]);
   assert.equal(change.files[0]?.status, "added");
   assert.equal(change.files[0]?.added, 1);
+});
+
+test("uses the same default base as the oxlint rules' changed-lines mode", () => {
+  assert.deepEqual(BASE_CANDIDATES, ["origin/HEAD", ...DEFAULT_BRANCHES]);
+});
+
+test("prefers origin/master over local main", () => {
+  const root = repo();
+  const first = commit(root, "initial", { "a.txt": "1\n" });
+  commit(root, "second", { "a.txt": "2\n" });
+  sh(root, "update-ref", "refs/remotes/origin/master", first);
+
+  const change = collectChanges({ cwd: root, mode: "full", exclude: [] });
+  assert.equal(change.baseLabel, "origin/master");
+  assert.equal(change.baseCommit, first);
 });
 
 test("prefers origin/HEAD over local main", () => {

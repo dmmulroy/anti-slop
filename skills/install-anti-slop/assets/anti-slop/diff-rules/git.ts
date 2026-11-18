@@ -46,12 +46,15 @@ export interface CollectOptions {
   readonly exclude: ReadonlyArray<string>;
 }
 
-/** Remote default branch first, then local fallbacks for clones without `origin/HEAD`. */
+/**
+ * Remote default branch first, then fallbacks for clones without `origin/HEAD`: the same order as
+ * the changed-lines mode of the oxlint rules (`oxlint-plugin-jev/changed`).
+ */
 export const BASE_CANDIDATES: ReadonlyArray<string> = [
   "origin/HEAD",
   "origin/main",
-  "main",
   "origin/master",
+  "main",
   "master",
 ];
 
@@ -227,7 +230,7 @@ function findBase(cwd: string, hasHead: boolean, requested: string | undefined):
   return {
     label: "HEAD",
     commit: resolveCommit(cwd, "HEAD"),
-    note: "no base branch (origin/HEAD, origin/main, main) found; judging uncommitted changes only",
+    note: `no base branch (${BASE_CANDIDATES.join(", ")}) found; judging uncommitted changes only`,
   };
 }
 

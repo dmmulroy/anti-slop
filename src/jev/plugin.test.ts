@@ -50,7 +50,7 @@ function lintWith(ruleNames: ReadonlyArray<string>) {
   );
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
-    if (key === "CI" || key.startsWith("TYPESAFE") || key.startsWith("JEV_") || key === "AI_GATEWAY_API_KEY") {
+    if (key === "CI" || key.startsWith("TYPESAFE") || key.startsWith("JEV_") || key.startsWith("ANTI_SLOP_") || key === "AI_GATEWAY_API_KEY") {
       delete env[key];
     }
   }

@@ -34,10 +34,6 @@ interface SharedOptions {
   longContext?: boolean;
   /** Answer the questions with an LLM judge instead of Jev. */
   judge?: JudgeOptions;
-  /** Only check matches that overlap lines changed against `changedBase`. */
-  changedOnly?: boolean;
-  /** The git ref `changedOnly` diffs against. */
-  changedBase?: string;
 }
 interface JevOptions extends SharedOptions {
   rules: JevRule[];
