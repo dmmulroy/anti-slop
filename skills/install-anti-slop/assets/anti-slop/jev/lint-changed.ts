@@ -16,9 +16,7 @@
 // It uses only Node built-ins and erasable type syntax, so Node runs it directly with the same
 // type stripping oxlint already needs to load this TypeScript plugin.
 
-// This is a standalone CLI outside any Effect runtime, so Effect's platform services and logger do
-// not apply.
-// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/global-console, effecttsgo/process-env
+// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/global-console, effecttsgo/process-env -- a standalone CLI outside any Effect runtime, so Effect's platform services and logger do not apply
 
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { statSync } from "node:fs";

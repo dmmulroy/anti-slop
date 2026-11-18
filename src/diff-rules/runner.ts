@@ -1,5 +1,4 @@
-// A standalone CLI outside any Effect runtime, so Effect's platform services do not apply.
-// oxlint-disable effecttsgo/async-function, effecttsgo/prefer-schema-over-json
+// oxlint-disable effecttsgo/async-function, effecttsgo/prefer-schema-over-json -- a standalone CLI outside any Effect runtime, so Effect's platform services do not apply
 
 import { chooseBackend, type Backend, type RuleAnswer } from "./backends.ts";
 import { defaultCacheDir, cacheKey, readCachedAnswer, writeCachedAnswer } from "./cache.ts";

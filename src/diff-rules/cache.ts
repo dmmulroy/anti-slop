@@ -1,5 +1,4 @@
-// A standalone CLI outside any Effect runtime, so Effect's platform services do not apply.
-// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/prefer-schema-over-json
+// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/prefer-schema-over-json -- a standalone CLI outside any Effect runtime, so Effect's platform services do not apply
 
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";

@@ -1,4 +1,4 @@
-// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/global-console, effecttsgo/async-function, effecttsgo/prefer-schema-over-json, effecttsgo/new-promise
+// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/global-console, effecttsgo/async-function, effecttsgo/prefer-schema-over-json, effecttsgo/new-promise -- tests a standalone CLI outside any Effect runtime with Node built-ins, a local HTTP server and child processes
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

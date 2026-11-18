@@ -33,9 +33,15 @@ importers:
       ai:
         specifier: 7.0.173
         version: 7.0.173(zod@4.6.7)
+      effect:
+        specifier: 4.1.4
+        version: 4.1.4
       oxlint:
         specifier: 1.94.0
         version: 1.94.0
+      oxlint-plugin-effect:
+        specifier: 0.32.4
+        version: 0.32.4(effect@4.1.4)
       oxlint-plugin-jev:
         specifier: file:vendor/oxlint-plugin-jev
         version: file:vendor/oxlint-plugin-jev(oxlint@1.94.0)
@@ -630,6 +636,9 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  effect@4.1.4:
+    resolution: {integrity: sha512-Tgrv/9FN+TZYyOn8XSli+fVqAfwDrDAkiX5Uu9vztINb675VTQdhD0gWI5Kzvhlh9QqzjZvw72iugqw5pwoghQ==}
+
   esbuild@0.28.2:
     resolution: {integrity: sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==}
     engines: {node: '>=18'}
@@ -649,6 +658,11 @@ packages:
 
   oxc-resolver@11.24.2:
     resolution: {integrity: sha512-FY91FiDBj7ls5MsFS9jN3tjz2o0/zsdSsymlakySaBwVJZorHhkWyICLZMKxlu1R9vYo+sd3z1jwb4J8x7bNDw==}
+
+  oxlint-plugin-effect@0.32.4:
+    resolution: {integrity: sha512-6ftacfODqlRSu+JH5YZoaVN1IwsZu9hHJvf47U9xcyKmqtZAXzw0YXuZ02REh1ZnF91WlVwkNPuAbJjZ/+G2VA==}
+    peerDependencies:
+      effect: '>=4.1.0 <5'
 
   oxlint-plugin-jev@file:vendor/oxlint-plugin-jev:
     resolution: {directory: vendor/oxlint-plugin-jev, type: directory}
@@ -1058,6 +1072,8 @@ snapshots:
       '@ai-sdk/provider-utils': 5.0.81(zod@4.6.7)
       zod: 4.6.7
 
+  effect@4.1.4: {}
+
   esbuild@0.28.2:
     optionalDependencies:
       '@esbuild/aix-ppc64': 0.28.2
@@ -1115,6 +1131,11 @@ snapshots:
       '@oxc-resolver/binding-wasm32-wasi': 11.24.2
       '@oxc-resolver/binding-win32-arm64-msvc': 11.24.2
       '@oxc-resolver/binding-win32-x64-msvc': 11.24.2
+
+  oxlint-plugin-effect@0.32.4(effect@4.1.4):
+    dependencies:
+      '@oxlint/plugins': 1.94.0
+      effect: 4.1.4
 
   oxlint-plugin-jev@file:vendor/oxlint-plugin-jev(oxlint@1.94.0):
     dependencies:

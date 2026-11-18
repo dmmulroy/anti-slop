@@ -14,8 +14,7 @@
 // `@ai-sdk/openai-compatible`, or `@ai-sdk/anthropic`) from the consumer's node_modules when they
 // run; the command backend needs only Node built-ins.
 
-// A standalone CLI outside any Effect runtime, so Effect's platform services do not apply.
-// oxlint-disable effecttsgo/process-env, effecttsgo/global-console
+// oxlint-disable effecttsgo/process-env, effecttsgo/global-console -- a standalone CLI outside any Effect runtime, so Effect's platform services do not apply
 
 import { BACKEND_NAMES, type BackendName } from "./config.ts";
 import type { ChangeMode } from "./git.ts";

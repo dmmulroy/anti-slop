@@ -1,4 +1,4 @@
-// oxlint-disable effecttsgo/global-console
+// oxlint-disable effecttsgo/global-console -- a plain tsx test script outside any Effect runtime reports its result on the console
 import assert from "node:assert/strict";
 import type { ChangeSet, FileChange, HistorySummary } from "./git.ts";
 import { buildInputs, renderJudgePrompt } from "./input.ts";

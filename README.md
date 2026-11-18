@@ -11,6 +11,7 @@ anti-slop was created by [Dillon Mulroy](https://github.com/dmmulroy) at [dmmulr
 - A Martin Fowler AST code-smell bundle (`anti-slop-martinfowler`).
 - Diff rules that judge a whole change set, for smells such as shotgun surgery and scope creep.
 - Four test-honesty rules from [interfere-inc/landmines](https://github.com/interfere-inc/landmines) (MIT), installed from npm as `@interfere/landmines`: `strict-msw`, `no-fixed-sleep`, `no-unsignaled-poll`, and `no-flake-masking`.
+- Nine Effect runtime rules from [cevr/effect-oxlint](https://github.com/cevr/effect-oxlint) (MIT), installed from npm as `oxlint-plugin-effect` in repositories on Effect 4.1 or later, such as `noSilentCatchAll`, `noUnboundedConcurrency`, and `requireSuppressionReason`.
 
 See [Jev rules](#jev-rules-llm-judged) and the [rule catalog](#jev-and-diff-rules).
 
@@ -31,7 +32,7 @@ Then ask your coding agent to install anti-slop. The skill does the following:
 - runs `scripts/install.mjs`, which copies the plugin to `tools/oxlint/anti-slop/`;
 - installs `oxlint` and `@oxlint/plugins` at matching versions, and `@interfere/landmines`;
 - merges the plugin into your existing Oxlint or Vite+ config, with every core rule and the four landmines testing rules enabled;
-- enables the Effect rules and the `@effect/tsgo` diagnostics when `effect` is a direct dependency;
+- enables the Effect rules and the `@effect/tsgo` diagnostics when `effect` is a direct dependency, plus the nine cevr/effect-oxlint rules from `oxlint-plugin-effect` on Effect 4.1 or later;
 - runs your lint and typecheck.
 
 The Jev rules and diff rules make paid model requests, so the skill sets them up only when you ask.
@@ -55,6 +56,7 @@ The script refuses to overwrite an existing directory. `--force` overrides that 
 git clone --depth 1 https://github.com/K-Mistele/anti-slop /tmp/anti-slop
 mkdir -p tools/oxlint && cp -R /tmp/anti-slop/src tools/oxlint/anti-slop
 npm install --save-dev --save-exact oxlint@1.93.0 @oxlint/plugins@1.93.0 @interfere/landmines@0.1.0
+npm install --save-dev --save-exact oxlint-plugin-effect@0.32.4 # Effect 4.1 or later only
 ```
 
 If you already depend on `oxlint`, install `@oxlint/plugins` at exactly that version instead. The upstream repository is tested with 1.86.0. Running `node /tmp/anti-slop/skills/install-anti-slop/scripts/install.mjs --jev` from your repository does the same copy and also adds the Jev fork.
@@ -63,7 +65,7 @@ Keep `src/vendor/eslint-stylistic/LICENSE` and `UPSTREAM.md` with the copy, beca
 
 ## Configure
 
-The following `oxlint.config.ts` enables the core rules, the Effect rules, and the Fowler bundle. The same `ignorePatterns`, `jsPlugins`, and `rules` work in `.oxlintrc.json` or under `lint` in a Vite+ config.
+The following `oxlint.config.ts` enables the core rules, the landmines testing rules, the Effect rules, and the Fowler bundle. The same `ignorePatterns`, `jsPlugins`, and `rules` work in `.oxlintrc.json` or under `lint` in a Vite+ config.
 
 ```ts
 import { defineConfig } from "oxlint";
@@ -76,6 +78,7 @@ export default defineConfig({
     { name: "anti-slop-effect", specifier: "./tools/oxlint/anti-slop/effect/index.ts" }, // Effect repositories only
     { name: "anti-slop-martinfowler", specifier: "./tools/oxlint/anti-slop/martinfowler/index.ts" },
     { name: "landmines", specifier: "@interfere/landmines/testing" },
+    { name: "effect", specifier: "oxlint-plugin-effect/plugin" }, // Effect 4.1 or later only
   ],
   rules: {
     "oxc/no-accumulating-spread": "error",
@@ -122,6 +125,16 @@ export default defineConfig({
     "anti-slop-effect/require-cause-when-narrowing": "error",
     "anti-slop-effect/require-operation-span": "error",
     "anti-slop-effect/require-service-make-layer": "error",
+
+    "effect/noAliasTestLayer": "error",
+    "effect/noEagerAcquire": "error",
+    "effect/noManagedRuntimeInEffect": "error",
+    "effect/noPerCallCacheConstruction": "error",
+    "effect/noPointFreeLog": "error",
+    "effect/noRunCollectOnUnboundedStream": "error",
+    "effect/noSilentCatchAll": "error",
+    "effect/noUnboundedConcurrency": "error",
+    "effect/requireSuppressionReason": "error",
 
     // Smells are prompts to look, so they warn. message-chains is left off by default.
     "anti-slop-martinfowler/global-data": "warn",
@@ -339,6 +352,21 @@ These four rules come from [interfere-inc/landmines](https://github.com/interfer
 | `no-unsignaled-poll` | `expect.poll` and `vi.waitFor` on request recorders and spy state, which race a deadline instead of awaiting an event. |
 | `no-flake-masking` | Test retries and raised timeouts. A test that passes on rerun is a flake to fix. |
 
+### Effect runtime (`effect`, error)
+
+These nine rules come from [cevr/effect-oxlint](https://github.com/cevr/effect-oxlint) by cevr, under the MIT license. anti-slop does not vendor them: in repositories whose direct `effect` dependency is 4.1 or later, install `oxlint-plugin-effect` from npm and register its `plugin` entry point as the `effect` plugin. The package imports `effect` at runtime, so Effect 3 and 4.0 repositories skip it. Use only these nine, not the package's recommended preset, which also enables rules that duplicate anti-slop, landmines, or `@effect/tsgo` checks, bans ordinary language features such as `null`, ternaries, `async`, and `throw`, and bans the SAFETY comments that `require-safety-comment-for-type-assertion` requires. `noUnboundedRetry` stays off because version 0.32.4 reports retries bounded with `Schedule.upTo`, and `requireForceKillAfter` stays off because it reports every `ChildProcess.make`.
+
+| Rule | What it checks |
+| --- | --- |
+| `noAliasTestLayer` | A `Test`, `Fake`, `Stub`, or `Mock` layer static that only returns the live layer. |
+| `noEagerAcquire` | An `acquireRelease` whose resource is built or captured before acquire runs, so an interruption in between leaks it. |
+| `noManagedRuntimeInEffect` | `ManagedRuntime.make` inside an Effect program instead of at a non-Effect host boundary. |
+| `noPerCallCacheConstruction` | `Effect.cached` or `Cache.make` inside an `Effect.fn` operation, which builds new cache state on every call. |
+| `noPointFreeLog` | A logger passed point-free to a callback that also receives an index, which then prints the index too. |
+| `noRunCollectOnUnboundedStream` | Collecting a stream that never ends without terminating it first. |
+| `noSilentCatchAll` | `catch` or `catchCause` handlers that turn every failure into `Effect.void`. |
+| `noUnboundedConcurrency` | `concurrency: "unbounded"` over a collection that can grow. |
+| `requireSuppressionReason` | Lint, Effect, and TypeScript suppressions that do not name their target and give a ` -- ` reason. |
 ### Effect (`anti-slop-effect`, error)
 
 | Rule | What it checks |
@@ -394,4 +422,4 @@ pnpm check       # oxlint with the tsrs typecheck, every RuleTester suite, and t
 
 ## License
 
-MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license. The `landmines` testing rules are the MIT-licensed [`@interfere/landmines`](https://github.com/interfere-inc/landmines) npm package, used as a dependency.
+MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license. The `landmines` testing rules are the MIT-licensed [`@interfere/landmines`](https://github.com/interfere-inc/landmines) npm package, and the `effect` runtime rules are the MIT-licensed [`oxlint-plugin-effect`](https://github.com/cevr/effect-oxlint) npm package; both are used as dependencies.

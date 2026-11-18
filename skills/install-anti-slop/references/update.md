@@ -73,6 +73,8 @@ The vendored `oxlint-plugin-jev` package (usually `tools/oxlint/oxlint-plugin-je
 
 An installation without the `landmines` plugin entry predates the `@interfere/landmines` testing rules. Offer them as new rules: install the package and enable the same four rules as a fresh install (`strict-msw`, `no-fixed-sleep`, `no-unsignaled-poll`, `no-flake-masking`), and no other `landmines` rules.
 
+An Effect installation without the `effect` plugin entry (`oxlint-plugin-effect/plugin`) predates the cevr/effect-oxlint rules. When the repository's direct `effect` dependency is 4.1 or later, offer them as new rules: install `oxlint-plugin-effect` and enable the same nine rules as a fresh install (`noAliasTestLayer`, `noEagerAcquire`, `noManagedRuntimeInEffect`, `noPerCallCacheConstruction`, `noPointFreeLog`, `noRunCollectOnUnboundedStream`, `noSilentCatchAll`, `noUnboundedConcurrency`, `requireSuppressionReason`), and no other `effect/*` rules or the package's recommended preset. On Effect 3 or 4.0, report that the rules need Effect 4.1 and leave them out.
+
 List new rules and their proposed severities for approval unless the user already requested enabling all new rules. Existing disabled rules stay disabled. Merely adding a new rule implementation need not enable it.
 
 Check incoming API requirements against the installed `oxlint` and `@oxlint/plugins` versions. Keep a compatible pair and follow repository version policy; change dependencies only when required by the adopted source or requested by the user. Preserve unrelated dependency ranges and the package manager.
