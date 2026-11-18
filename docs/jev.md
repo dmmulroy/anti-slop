@@ -16,10 +16,10 @@ before pushing and in CI, never in the editor.
 
 anti-slop uses Kyle Mistele's fork of `oxlint-plugin-jev`, which adds `createJevPlugin` (one oxlint
 rule per question, all of a plugin's rules sharing one request per file), per-rule `message`,
-`changedOnly`, LLM-judge mode, and an AI SDK transport. The fork is not published to npm, so:
+per-rule changed-lines mode (shared with anti-slop's other rules as `oxlint-plugin-jev/changed`), LLM-judge mode, and an AI SDK transport. The fork is not published to npm, so:
 
 - This repository includes it as a git submodule at `vendor/oxlint-plugin-jev`, pinned to a commit
-  on the fork's `main` (`741b19b`). To update it, check out a newer `main` commit in the submodule,
+  on the fork's `main` (`451926d`). To update it, check out a newer `main` commit in the submodule,
   then run `pnpm build:jev` and `pnpm sync:skill-assets`. `pnpm build:jev` installs the submodule's own dependencies
   with npm, builds it with `vp pack`, and reinstalls, and anti-slop depends on it as
   `"oxlint-plugin-jev": "file:vendor/oxlint-plugin-jev"`. Clone with `--recurse-submodules`, or run
@@ -90,66 +90,49 @@ Get an API key from <https://console.typesafe.ai>, or use an LLM judge (see [Jud
 | `FACTORY_API_KEY` | A Factory API key. Without a TypeSafe key, Jev runs on Factory's decision endpoint (`FACTORY_API_BASE_URL`, default `https://api.factory.ai`). Factory serves only aliases such as `jev-latest`, so a pinned `model` is refused, and the org needs the `decision_models` feature. |
 | `AI_GATEWAY_API_KEY` | Needed instead when `model` is an AI Gateway id such as `typesafe-ai/jev`, or for an LLM judge without a `provider` module. |
 | `TYPESAFE_BASE_URL` | Another TypeSafe host, such as a mock, without `/v1`. |
-| `JEV_CHANGED_ONLY` | `1` or `0`; overrides `changedOnly`. `lint-changed.ts` sets it (see below). |
-| `JEV_CHANGED_BASE` | The git ref `changedOnly` diffs against (default `HEAD`), such as `origin/main` in CI. |
+| `ANTI_SLOP_JEV` | `1` runs the Jev rules; see [docs/modes.md](./modes.md). |
+| `ANTI_SLOP_MODE` | `all` asks about every match instead of changed lines only. |
+| `ANTI_SLOP_BASE` | The ref whose merge base with `HEAD` changed lines are measured from (default: the default branch). |
 | `CI` | With `ci: "fail"` (set in both plugin entries), a run that cannot reach Jev fails instead of skipping. |
 
-Register the plugin entries in the base config, but enable none of their rules there, so the editor
-and plain `oxlint` runs never call Jev:
+Register the plugin entries and enable the questions in `oxlint.config.ts` through
+`defineAntiSlopConfig` ([docs/modes.md](./modes.md)). Each question is its own rule, so its severity,
+or `"off"`, is set here; an `"off"` rule is not sent at all. The helper keeps the Jev rules off unless
+`ANTI_SLOP_JEV=1`, so the editor and plain `oxlint` runs never call Jev, and runs them in
+`"changed"` mode unless a rule says `mode: "all"`. The recommended setup runs every source question
+at `"error"` and, for test files, turns the source questions off and `test-cannot-fail` on. Adjust
+the globs to your layout.
 
 ```ts
 // oxlint.config.ts
-export default defineConfig({
-  jsPlugins: [
-    { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
-    { name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" },
-  ],
-  rules: {
-    // ...normal rules, no anti-slop-effect-jev rules
-  },
-});
-```
-
-Enable the questions in an overlay config. Each question is its own rule, so its severity, or `"off"`,
-is set here; an `"off"` rule is not sent at all. The recommended setup runs every source question at
-`"error"` and, for test files, turns the source questions off and `test-cannot-fail` on. Adjust the
-globs to your layout.
-
-```ts
-// oxlint.jev.config.ts
-import type { OxlintConfig } from "oxlint";
-
-import baseConfig from "./oxlint.config.ts";
 import {
   effectJevPluginName,
   effectSourceJevRules,
   effectTestJevRules,
 } from "./tools/oxlint/anti-slop/jev/effect-rules.ts";
+import { defineAntiSlopConfig } from "./tools/oxlint/anti-slop/modes/config.ts";
 
 type Severity = "error" | "warn" | "off";
 
 const severities = (plugin: string, rules: ReadonlyArray<{ id: string }>, severity: Severity) =>
   Object.fromEntries(rules.map((rule) => [`${plugin}/${rule.id}`, severity]));
 
-// Widened so `base.rules` and `base.overrides` typecheck even when the base sets neither.
-const base: OxlintConfig = baseConfig;
 const testFiles = ["**/*.test.*", "**/*.spec.*", "test/**", "tests/**"];
 
-// Spread the base rather than `extends: [base]`: oxlint 1.86 rejects relative jsPlugins
-// specifiers that arrive through `extends` in a TypeScript config.
-// An annotation rather than `defineConfig`: TypeScript 7 reports this spread as "a union type that
-// is too complex to represent" when inferred through `defineConfig`.
-const config: OxlintConfig = {
-  ...base,
+export default defineAntiSlopConfig({
+  jsPlugins: [
+    { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+    { name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" },
+  ],
   rules: {
-    ...base.rules,
+    // ...normal rules
     ...severities(effectJevPluginName, effectSourceJevRules, "error"),
-    // Per-question severity, for example:
+    // Per-question severity and mode, for example:
     // "anti-slop-effect-jev/read-then-write-race": "warn",
     // "anti-slop-effect-jev/cache-in-method": "off",
+    // "anti-slop-effect-jev/unbounded-retry": { level: "error", mode: "all" },
   },
   overrides: [
-    ...(base.overrides ?? []),
     {
       files: testFiles,
       rules: {
@@ -158,18 +141,15 @@ const config: OxlintConfig = {
       },
     },
   ],
-};
-
-export default config;
+});
 ```
 
-A source file then sends the 10 source questions and their 10 location questions in one request,
-and a test file sends only `test-cannot-fail` and its location question.
+A changed source file then sends the 10 source questions and their 10 location questions in one
+request, and a changed test file sends only `test-cannot-fail` and its location question.
 
 `plugin.ts` sets `ci: "fail"` and `effectJevOptions`. To change plugin-level settings (`model`,
-`judge`, `changedBase`, `longContext`, limits), edit the vendored `plugin.ts`; the rules take no
-options in the oxlint config.
-
+`judge`, `longContext`, limits), edit the vendored `plugin.ts`; the rules take no options in the
+oxlint config.
 ### Judge mode
 
 To answer with any AI SDK chat model instead of Jev, add `judge` in `plugin.ts`:
@@ -219,73 +199,27 @@ Rules are then `jev/<id>` (for example `"jev/error-as-value": "error"`,
 `"jev/feature-envy": "warn"`). The same approach builds a plugin from a subset of the presets or
 from your own questions; the preset modules export plain arrays of the fork's `JevRule` type.
 
-## Lint only what changed
+## Run on changed code
 
-Two filters combine:
-
-- `tools/oxlint/anti-slop/jev/lint-changed.ts` passes oxlint only the JS and TS files changed in the
-  working tree, so unchanged files are not even parsed. It collects staged, unstaged, and
-  untracked-but-not-ignored files, drops deleted files, and keeps only existing files with a
-  lintable extension.
-- It also sets `JEV_CHANGED_ONLY=1` (unless already set), so within those files the plugin only asks
-  about functions and calls that overlap changed lines. File rules still send a changed file whole,
-  since any changed line counts. With `--all` it sets `JEV_CHANGED_ONLY=0` and lints everything.
-
-`changedOnly` alone would already skip unchanged files' questions, but oxlint would still parse and
-run every other rule on every file, so the runner stays for fast local runs.
-
-```text
-node lint-changed.ts [--all] [--ext=.ts,.tsx] [--oxlint=<bin>] [oxlint args...]
-```
-
-- `--all` lints the whole project by running oxlint with no file arguments, with `JEV_CHANGED_ONLY=0`.
-- `--ext` replaces the default extensions (`.js .mjs .cjs .jsx .ts .mts .cts .tsx`).
-- `--oxlint` names another oxlint binary; the default is `oxlint` on `PATH`, which package-manager
-  scripts provide.
-- Every other argument goes to oxlint unchanged, such as `-c oxlint.jev.config.ts` or
-  `--format=github`.
-
-Before the first commit, when there is no `HEAD`, it uses `git ls-files --cached` for the staged
-set. Paths are relative to and limited to the current directory, so running it from a workspace
-package lints only that package's changes. When nothing lintable changed it prints
-`lint-changed: no changed lintable files.` and exits 0. Otherwise it exits with oxlint's status, or
-2 when git or oxlint cannot run. It uses only Node built-ins and erasable type syntax, so `node`
-runs it directly with built-in type stripping (Node 22.18 or later).
-
-### Recommended scripts
-
-```json
-{
-  "scripts": {
-    "lint": "oxlint",
-    "lint:jev": "node tools/oxlint/anti-slop/jev/lint-changed.ts -c oxlint.jev.config.ts",
-    "lint:jev:full": "node tools/oxlint/anti-slop/jev/lint-changed.ts --all -c oxlint.jev.config.ts",
-    "check:fast": "npm run lint:jev",
-    "check:full": "npm run lint:jev:full"
-  }
-}
-```
-
-The overlay includes the base config, so one oxlint pass runs the normal rules and the jev rules
-together. `check:fast` is the default before pushing: changed files, changed functions. `check:full`
-asks about everything. When Jev is skipped (no key outside CI), the normal rules still run. `lint`
-stays the jev-free command for the editor and quick runs. Add your typecheck and tests to both
-`check` scripts.
+`modes/lint.ts push` runs the normal rules and the Jev rules in one oxlint pass before pushing and in
+CI, and `modes/lint.ts full` asks about everything; [docs/modes.md](./modes.md) has the hook setup
+and a GitHub Actions workflow. In `"changed"` mode, a function, call, or JSX rule asks only about
+matches that overlap changed lines, and a file rule sends a changed file whole, since any changed
+line counts. An unchanged file sends nothing.
 
 ## CI
 
 - Set `TYPESAFE_API_KEY` (or `FACTORY_API_KEY` or `AI_GATEWAY_API_KEY`) as a secret. Without it, or when Jev times out or
   errors, the plugin warns and reports nothing, except under `CI` with `ci: "fail"`, which both
   plugin entries set, where the run fails.
-- On pull requests, run `oxlint -c oxlint.jev.config.ts` with `JEV_CHANGED_ONLY=1` and
-  `JEV_CHANGED_BASE=origin/main` (fetch the base first) to check everything the branch touched, or
-  run `check:full` on a schedule.
+- On pull requests, run `node tools/oxlint/anti-slop/modes/lint.ts push` with
+  `ANTI_SLOP_BASE=origin/<base branch>` (fetch it first) to check everything the branch touched, or
+  `modes/lint.ts full` on a schedule.
 - Keep `node_modules/.cache/oxlint-plugin-jev` between runs (for example with `actions/cache`).
-
 ## Tuning
 
-- **Set severities per question.** Downgrade a noisy question to `"warn"` or turn it `"off"` in the
-  overlay rather than editing the preset.
+- **Set severities per question.** Downgrade a noisy question to `"warn"` or turn it `"off"` in
+  the config rather than editing the preset.
 - **Pin the model.** Once the cutoffs suit your codebase, set `model` in `plugin.ts` to the versioned
   id shown in each diagnostic (for example `"jev-1.13.0"`).
 - **Tune cutoffs per rule.** Every diagnostic prints the score and cutoff. Raise a rule's cutoff when

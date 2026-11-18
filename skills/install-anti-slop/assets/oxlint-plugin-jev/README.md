@@ -5,7 +5,7 @@
 
 [Oxlint](https://oxc.rs/docs/guide/usage/linter.html) rules written in plain English. Each rule is a yes/no question about a function, a call, a JSX element, or a whole file. The plugin sends every match to [TypeSafe Jev](https://typesafe.ai), a decision model, or, in judge mode, to any [AI SDK](https://ai-sdk.dev) chat model, and reports when the yes-probability reaches the rule's cutoff.
 
-This is Kyle Mistele's fork of [wobsoriano/oxlint-plugin-jev](https://github.com/wobsoriano/oxlint-plugin-jev). It adds per-rule messages, `jev/suggest`, `createJevPlugin`, `changedOnly`, a per-match cache, judge mode, the AI Gateway fallback, and Factory credentials.
+This is Kyle Mistele's fork of [wobsoriano/oxlint-plugin-jev](https://github.com/wobsoriano/oxlint-plugin-jev). It adds per-rule messages, `jev/suggest`, `createJevPlugin`, per-rule changed-lines mode, a per-match cache, judge mode, the AI Gateway fallback, and Factory credentials.
 
 ## Install
 
@@ -39,8 +39,7 @@ Other variables:
 | ---------------------- | --------------------------------------------------------------------------------------------------- |
 | `TYPESAFE_BASE_URL`    | Another TypeSafe host, without `/v1`. `TYPESAFE_AI_BASE_URL` is the same with `/v1`; this one wins. |
 | `FACTORY_API_BASE_URL` | Another Factory host, such as `https://dev.api.factory.ai`. Defaults to `https://api.factory.ai`.   |
-| `JEV_CHANGED_ONLY`     | `1` or `0` overrides `changedOnly`.                                                                 |
-| `JEV_CHANGED_BASE`     | Overrides `changedBase`.                                                                            |
+| `JEV_CHANGED_BASE`     | The base ref for [changed lines](#changed-lines) when the `base` setting is not set.                |
 
 With no credential, the plugin warns once and reports nothing. Set `ci: "fail"` so CI fails instead.
 
@@ -151,8 +150,22 @@ Set next to `rules`, for `jev/ask`, `jev/suggest`, or `createJevPlugin`.
 | `model`             | `"jev-latest"` | Jev model id. Pin one such as `"jev-1.13.0"` once cutoffs are tuned (TypeSafe only). An id with `/` goes through AI Gateway. |
 | `longContext`       | `false`        | Raise Jev's limit from 64k to 262k tokens per request. Slower and less accurate.                                             |
 | `judge`             | none           | Use an LLM judge instead of Jev. See [Judge mode](#judge-mode).                                                              |
-| `changedOnly`       | `false`        | Only ask about matches on lines changed against `changedBase`.                                                               |
-| `changedBase`       | `"HEAD"`       | The git ref for `changedOnly`.                                                                                               |
+
+## Changed lines
+
+By default every rule only asks about matches on lines changed on the current branch: the working tree (commits on the branch, staged and unstaged edits, untracked files) diffed against the merge base of `HEAD` and the default branch. A match counts when any of its lines changed, a `file` rule matches any changed file, and an unchanged file sends no request. The default branch is what `refs/remotes/origin/HEAD` points at, else the first of `origin/main`, `origin/master`, `main`, and `master` that exists. If git can't produce a diff (not a repository, no default branch), the plugin warns and checks every line.
+
+Set a rule's mode to `"all"` to ask about every match, and pick another base ref, in oxlint `settings`. Modes are keyed by the full rule name (`jev/ask`, or `<name>/<id>` for `createJevPlugin` rules):
+
+```json
+{
+  "settings": {
+    "changedLines": { "rules": { "jev/ask": "all" }, "base": "origin/release" }
+  }
+}
+```
+
+`JEV_CHANGED_BASE` sets the base when `base` is not set. The same logic is exported from `oxlint-plugin-jev/changed` (`changedLines`, `ruleMode`, `defaultBase`, `overlaps`) for other plugins that read the same settings.
 
 ## Severity per question
 
@@ -234,12 +247,11 @@ Check only what a pull request changed, and fail if the model can't be reached (
 ```yaml
 - run: npx oxlint -c .oxlintrc.ci.json
   env:
-    JEV_CHANGED_ONLY: '1'
     JEV_CHANGED_BASE: origin/${{ github.base_ref }}
     TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
 ```
 
-Fetch the base ref first (for example `actions/checkout` with `fetch-depth: 0`). Changed lines come from `git diff -U0 <base>` plus untracked files; a match counts when any of its lines changed, and a file with no changes sends no request. If git can't produce a diff, the plugin warns and checks every line.
+Fetch the base ref first (for example `actions/checkout` with `fetch-depth: 0`). See [Changed lines](#changed-lines).
 
 To save cost across runs, cache `node_modules/.cache/oxlint-plugin-jev` (for example with `actions/cache`).
 
@@ -264,7 +276,7 @@ oxlint -c .oxlintrc.ci.json   # CI and pre-push
 
 Each answer is cached under `node_modules/.cache/oxlint-plugin-jev`, keyed by backend, model, question, and snippet. Editing one function re-asks only the matches inside it. Changing a cutoff, id, message, or severity re-asks nothing; changing the model, backend, or a question's wording re-asks every match of that question.
 
-Every uncached match is a paid question, and a `file` rule sends the whole file. Keep costs down with `maxMatchesPerFile`, `changedOnly`, the cache, and the editor overlay.
+Every uncached match is a paid question, and a `file` rule sends the whole file. Keep costs down with `maxMatchesPerFile`, changed-lines mode, the cache, and the editor overlay.
 
 ## Development
 
