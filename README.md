@@ -7,13 +7,13 @@ anti-slop was created by [Dillon Mulroy](https://github.com/dmmulroy) at [dmmulr
 - **An oxlint Jev plugin with 23 LLM-judged rules.** Each rule is a plain-English yes/no question that a pattern-based linter can't answer, asked of a [Jev](https://typesafe.ai) decision model or any AI SDK chat model. There are two sets:
   - `anti-slop-effect-jev`: 11 Effect review questions, such as `shallow-service`, `swallow-without-capture`, `read-then-write-race`, `network-call-in-transaction`, and, for tests, `test-cannot-fail`.
   - `anti-slop-martinfowler-jev`: 12 of Martin Fowler's code smells from *Refactoring*, such as `feature-envy`, `data-clumps`, `primitive-obsession`, and `middle-man`.
-- More Effect AST rules (`anti-slop-effect`), including `no-unbounded-retry`, ported from cevr/effect-oxlint (MIT) to accept Effect 4.1's `Schedule.upTo` bounds.
+- More Effect AST rules (`anti-slop-effect`), including `no-unbounded-retry`, ported from cevr/effect-oxlint (MIT) to accept Effect 4.1's `Schedule.upTo` bounds, and `throw-in-effect-gen`, ported from mpsuesser/enfect (MIT) to report only throws that run in the Effect generator itself.
 - Opt-in XState 5 rules (`anti-slop-xstate`) for repositories that depend on `xstate`.
 - A Martin Fowler AST code-smell bundle (`anti-slop-martinfowler`).
 - Diff rules that judge a whole change set, for smells such as shotgun surgery and scope creep.
 - Four test-honesty rules from [interfere-inc/landmines](https://github.com/interfere-inc/landmines) (MIT), installed from npm as `@interfere/landmines`: `strict-msw`, `no-fixed-sleep`, `no-unsignaled-poll`, and `no-flake-masking`.
 - Ten Effect runtime rules from [cevr/effect-oxlint](https://github.com/cevr/effect-oxlint) (MIT), installed from npm as `oxlint-plugin-effect` in repositories on Effect 4.1 or later, such as `noSilentCatchAll`, `noUnboundedConcurrency`, and `requireForceKillAfter`.
-- Nine Effect rules from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) (MIT), installed from npm as `@enfect/oxlint` in Effect repositories, such as `throw-in-effect-gen`, `prefer-redacted-config`, and `no-cause-in-http-response`.
+- Eight Effect rules from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) (MIT), installed from npm as `@enfect/oxlint` in Effect repositories, such as `effect-promise-vs-trypromise`, `prefer-redacted-config`, and `no-cause-in-http-response`.
 
 See [Jev rules](#jev-rules-llm-judged) and the [rule catalog](#jev-and-diff-rules).
 
@@ -34,7 +34,7 @@ Then ask your coding agent to install anti-slop. The skill does the following:
 - runs `scripts/install.mjs`, which copies the plugin to `tools/oxlint/anti-slop/`;
 - installs `oxlint` and `@oxlint/plugins` at matching versions, and `@interfere/landmines`;
 - merges the plugin into your existing Oxlint or Vite+ config, with every core rule and the four landmines testing rules enabled;
-- enables the Effect rules, the `@effect/tsgo` diagnostics, and the nine `@enfect/oxlint` rules when `effect` is a direct dependency, plus the ten cevr/effect-oxlint rules from `oxlint-plugin-effect` on Effect 4.1 or later;
+- enables the Effect rules, the `@effect/tsgo` diagnostics, and the eight `@enfect/oxlint` rules when `effect` is a direct dependency, plus the ten cevr/effect-oxlint rules from `oxlint-plugin-effect` on Effect 4.1 or later;
 - enables the XState rules when `xstate` is a direct dependency;
 - adds a pre-commit hook (free rules on staged files) and a pre-push hook (free rules plus Jev rules on changed lines) with your existing hook tool;
 - runs your lint and typecheck.
@@ -135,6 +135,7 @@ export default defineAntiSlopConfig({
     "anti-slop-effect/require-cause-when-narrowing": "error",
     "anti-slop-effect/require-operation-span": "error",
     "anti-slop-effect/require-service-make-layer": "error",
+    "anti-slop-effect/throw-in-effect-gen": "error",
 
     "effect/noAliasTestLayer": "error",
     "effect/noEagerAcquire": "error",
@@ -147,7 +148,6 @@ export default defineAntiSlopConfig({
     "effect/requireSuppressionReason": "error",
     "effect/requireForceKillAfter": "error",
 
-    "enfect/throw-in-effect-gen": "error",
     "enfect/effect-promise-vs-trypromise": "error",
     "enfect/prefer-redacted-config": "error",
     "enfect/avoid-option-getorthrow": "error",
@@ -173,6 +173,13 @@ export default defineAntiSlopConfig({
     "anti-slop-martinfowler/mysterious-name": "warn",
     "anti-slop-martinfowler/repeated-switches": "warn",
   },
+  overrides: [
+    {
+      // Tests throw inside Effect generators on purpose.
+      files: ["**/*.test.*", "**/*.spec.*", "**/test/**", "**/tests/**"],
+      rules: { "anti-slop-effect/throw-in-effect-gen": "off" },
+    },
+  ],
 });
 ```
 
@@ -373,11 +380,10 @@ These ten rules come from [cevr/effect-oxlint](https://github.com/cevr/effect-ox
 
 ### Effect conventions (`enfect`, error)
 
-These nine rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) by Marc Suesser, under the MIT license. anti-slop does not vendor them: in Effect repositories, install `@enfect/oxlint` from npm and register it as the `enfect` plugin, a name that cannot collide with cevr's `effect` plugin. The package brings its own `effect`, so it works with any Effect version. Its other rules duplicate anti-slop, `@effect/tsgo`, or cevr checks, or ban ordinary language features.
+These eight rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) by Marc Suesser, under the MIT license. anti-slop does not vendor them: in Effect repositories, install `@enfect/oxlint` from npm and register it as the `enfect` plugin, a name that cannot collide with cevr's `effect` plugin. The package brings its own `effect`, so it works with any Effect version. Its other rules duplicate anti-slop, `@effect/tsgo`, or cevr checks, or ban ordinary language features. `throw-in-effect-gen` stays off because version 0.10.0 reports throws in helpers, promise callbacks, and object methods that are only declared inside the generator, and misses `Effect.fn("name")(function* ...)`; use `anti-slop-effect/throw-in-effect-gen`, a corrected port, instead.
 
 | Rule | What it checks |
 | --- | --- |
-| `throw-in-effect-gen` | `throw` inside `Effect.gen`, `Effect.fn`, or `Effect.fnUntraced`, which becomes a defect instead of a typed failure. |
 | `effect-promise-vs-trypromise` | `Effect.promise`, which turns a rejection into a defect. Use `Effect.tryPromise` with a `catch`. |
 | `prefer-redacted-config` | Secret-named configuration read as a plain string instead of a redacted value. |
 | `avoid-option-getorthrow` | Any `.getOrThrow` access, which turns a modeled absence or failure back into a throw. |
@@ -407,6 +413,7 @@ These nine rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfec
 | [`require-cause-when-narrowing`](src/effect/rules/require-cause-when-narrowing.ts) | Require Effect.mapError/catch/catchAll/catchCause/orElse handlers that construct a new error to keep the original error as `cause`. |
 | [`require-operation-span`](src/effect/rules/require-operation-span.ts) | Require each operation returned by a Context.Service make to be traced with Effect.fn("name") or Effect.withSpan. |
 | [`require-service-make-layer`](src/effect/rules/require-service-make-layer.ts) | Require Context.Service classes to define `make` and `static layer = Layer.effect(this, this.make)`, with variant layers derived from them. |
+| [`throw-in-effect-gen`](src/effect/rules/throw-in-effect-gen.ts) | `throw` whose nearest enclosing function is the generator of `Effect.gen`, `Effect.fn`, or `Effect.fnUntraced`, which becomes a defect instead of a typed failure. Throws in nested helpers, callbacks, and `try` blocks with a `catch` are not reported. Off for test files. Ported from mpsuesser/enfect's `throw-in-effect-gen` (MIT). |
 
 ### XState (`anti-slop-xstate`, error)
 
@@ -457,4 +464,4 @@ pnpm check       # oxlint with the tsrs typecheck, every RuleTester suite, and t
 
 ## License
 
-MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license. The `landmines` testing rules are the MIT-licensed [`@interfere/landmines`](https://github.com/interfere-inc/landmines) npm package, the `effect` runtime rules are the MIT-licensed [`oxlint-plugin-effect`](https://github.com/cevr/effect-oxlint) npm package, and the `enfect` rules are the MIT-licensed [`@enfect/oxlint`](https://github.com/mpsuesser/enfect) npm package; all three are used as dependencies. [`src/effect/rules/no-unbounded-retry.ts`](src/effect/rules/no-unbounded-retry.ts) is ported from cevr/effect-oxlint's `noUnboundedRetry` under its MIT license.
+MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license. The `landmines` testing rules are the MIT-licensed [`@interfere/landmines`](https://github.com/interfere-inc/landmines) npm package, the `effect` runtime rules are the MIT-licensed [`oxlint-plugin-effect`](https://github.com/cevr/effect-oxlint) npm package, and the `enfect` rules are the MIT-licensed [`@enfect/oxlint`](https://github.com/mpsuesser/enfect) npm package; all three are used as dependencies. [`src/effect/rules/no-unbounded-retry.ts`](src/effect/rules/no-unbounded-retry.ts) is ported from cevr/effect-oxlint's `noUnboundedRetry` under its MIT license, and [`src/effect/rules/throw-in-effect-gen.ts`](src/effect/rules/throw-in-effect-gen.ts) from mpsuesser/enfect's `throw-in-effect-gen` under its MIT license.
