@@ -16,6 +16,7 @@ import { preferYieldServiceRule } from "./rules/prefer-yield-service.ts";
 import { requireCauseWhenNarrowingRule } from "./rules/require-cause-when-narrowing.ts";
 import { requireOperationSpanRule } from "./rules/require-operation-span.ts";
 import { requireServiceMakeLayerRule } from "./rules/require-service-make-layer.ts";
+import { throwInEffectGenRule } from "./rules/throw-in-effect-gen.ts";
 
 /** Opt-in Oxlint rules for Effect service and Layer architecture. */
 const antiSlopEffectPlugin = eslintCompatPlugin({
@@ -37,6 +38,7 @@ const antiSlopEffectPlugin = eslintCompatPlugin({
 		"require-cause-when-narrowing": requireCauseWhenNarrowingRule,
 		"require-operation-span": requireOperationSpanRule,
 		"require-service-make-layer": requireServiceMakeLayerRule,
+		"throw-in-effect-gen": throwInEffectGenRule,
 	},
 });
 

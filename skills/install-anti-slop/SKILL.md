@@ -134,10 +134,17 @@ Complete when the operation and target path are established and pre-existing wor
      "anti-slop-effect/require-cause-when-narrowing": "error",
      "anti-slop-effect/require-operation-span": "error",
      "anti-slop-effect/require-service-make-layer": "error",
+     "anti-slop-effect/throw-in-effect-gen": "error",
    },
+   overrides: [
+     {
+       files: ["**/*.test.*", "**/*.spec.*", "**/test/**", "**/tests/**"],
+       rules: { "anti-slop-effect/throw-in-effect-gen": "off" },
+     },
+   ],
    ```
 
-   `no-static-effect-service-forwarders` rejects static members of a service class that only fetch the service and call one of its methods (`static find = (id) => Users.use((users) => users.find(id))`); callers should `yield* Users` and call the method, so the dependency is visible where it is used. `no-unbounded-retry` is ported from cevr/effect-oxlint's `noUnboundedRetry` (MIT) and requires every `Effect.retry`, `Effect.retryOrElse`, `Stream.retry`, and `HttpClient.retryTransient` policy to stop: a `times` option, `Schedule.upTo({ times })` or `Schedule.upTo({ duration })`, `Schedule.max` with `Schedule.recurs` or `Schedule.during`, a bounded constructor, or a later `Effect.timeout` in the same pipeline. Schedules it cannot read (imports, function results, custom combinators) are left alone.
+   `no-static-effect-service-forwarders` rejects static members of a service class that only fetch the service and call one of its methods (`static find = (id) => Users.use((users) => users.find(id))`); callers should `yield* Users` and call the method, so the dependency is visible where it is used. `no-unbounded-retry` is ported from cevr/effect-oxlint's `noUnboundedRetry` (MIT) and requires every `Effect.retry`, `Effect.retryOrElse`, `Stream.retry`, and `HttpClient.retryTransient` policy to stop: a `times` option, `Schedule.upTo({ times })` or `Schedule.upTo({ duration })`, `Schedule.max` with `Schedule.recurs` or `Schedule.during`, a bounded constructor, or a later `Effect.timeout` in the same pipeline. Schedules it cannot read (imports, function results, custom combinators) are left alone. `throw-in-effect-gen` is ported from mpsuesser/enfect's `throw-in-effect-gen` (MIT) and rejects a `throw` whose nearest enclosing function is the generator passed to `Effect.gen`, `Effect.fn` (including `Effect.fn("name")(function* ...)`), or `Effect.fnUntraced`, where it becomes a defect instead of a typed failure. A synchronous function invoked in place counts as part of the generator, and a `throw` inside a `try` block with a `catch` clause is allowed. Throws in helpers, promise callbacks, object methods, and callbacks passed to `Effect.try`, `Effect.tryPromise`, or `Effect.sync` belong to those functions and are not reported. Turn it off for test files with the `overrides` block above, adapted to the repository's test layout, because tests throw inside generators on purpose. When cleanup is authorized, replace each finding with `return yield* Effect.fail(...)` or `return yield* new MyTaggedError({...})`.
 
    Merge these entries with the generic plugin configuration rather than replacing it. Do not enable the Effect plugin merely because Effect appears transitively in a lockfile; require a direct package-manifest dependency or an explicit user request. The rule covers relative project imports. Report package-alias imports as a current limitation rather than pretending they are enforced.
 
@@ -187,14 +194,13 @@ Complete when the operation and target path are established and pre-existing wor
 
    When cleanup is authorized, fix each finding at its cause: give each suppression a reason after ` -- ` that says why the check does not apply (or remove the suppression), choose a finite concurrency, record the cause before recovering or recover a named failure instead of erasing it (switching to `Effect.ignore` hides the same failure), build the resource inside acquire, construct caches once in the owning layer, terminate a stream with `take`, `takeUntil`, `takeWhile`, or `timeout` before collecting it, and name `forceKillAfter` (for example `"5 seconds"`) on each `ChildProcess.make`, or `killSignal: "SIGKILL"`.
 
-   In every Effect repository, also install [`@enfect/oxlint`](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) (mpsuesser/enfect, MIT) as a development dependency, pinned exactly at the version `npm view @enfect/oxlint version` reports. It depends on its own `effect` and `@oxlint/plugins` ^1.85, so it does not constrain the repository's Effect version. Register it under the name `enfect`, never `effect`, which is cevr's plugin, and enable exactly these nine rules:
+   In every Effect repository, also install [`@enfect/oxlint`](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) (mpsuesser/enfect, MIT) as a development dependency, pinned exactly at the version `npm view @enfect/oxlint version` reports. It depends on its own `effect` and `@oxlint/plugins` ^1.85, so it does not constrain the repository's Effect version. Register it under the name `enfect`, never `effect`, which is cevr's plugin, and enable exactly these eight rules:
 
    ```ts
    jsPlugins: [
      { name: "enfect", specifier: "@enfect/oxlint" },
    ],
    rules: {
-     "enfect/throw-in-effect-gen": "error",
      "enfect/effect-promise-vs-trypromise": "error",
      "enfect/prefer-redacted-config": "error",
      "enfect/avoid-option-getorthrow": "error",
@@ -206,9 +212,9 @@ Complete when the operation and target path are established and pre-existing wor
    },
    ```
 
-   They reject `throw` inside `Effect.gen`, `Effect.fn`, or `Effect.fnUntraced` outside an `Effect.try` callback (`throw-in-effect-gen`), every `Effect.promise`, whose rejection becomes a defect instead of a typed failure (`effect-promise-vs-trypromise`), secret-named configuration read with `Config.String` or `Config.NonEmptyString`, or a secret-named `Schema.String` field in `Config.schema`, instead of a redacted value (`prefer-redacted-config`), any `.getOrThrow` member access (`avoid-option-getorthrow`), every `Effect.runSync`, `Effect.runPromise`, and `Effect.runFork` (`effect-run-in-body`; turn it off in an `overrides` block for entry points and test harnesses), `Cause.pretty`, `Cause.squash`, or a caught cause or error rendered into an HTTP response body (`no-cause-in-http-response`), `Effect.ignore` immediately before `Effect.as` in a pipe, which only hides the failure (`no-effect-ignore-then-as`), `expect` inside an `if`, which passes when the branch is skipped (`avoid-expect-in-if`), and `yield*` inside a `for` loop instead of `Effect.forEach` with an explicit concurrency (`yield-in-for-loop`). Do not use the package's other rules: most duplicate anti-slop, `@effect/tsgo`, or cevr checks, or ban ordinary language features. `effect-promise-vs-trypromise`, `yield-in-for-loop`, `effect-run-in-body`, and `avoid-expect-in-if` produce many findings in established codebases, mostly in tests; report the counts and fix them only when cleanup is authorized.
+   They reject every `Effect.promise`, whose rejection becomes a defect instead of a typed failure (`effect-promise-vs-trypromise`), secret-named configuration read with `Config.String` or `Config.NonEmptyString`, or a secret-named `Schema.String` field in `Config.schema`, instead of a redacted value (`prefer-redacted-config`), any `.getOrThrow` member access (`avoid-option-getorthrow`), every `Effect.runSync`, `Effect.runPromise`, and `Effect.runFork` (`effect-run-in-body`; turn it off in an `overrides` block for entry points and test harnesses), `Cause.pretty`, `Cause.squash`, or a caught cause or error rendered into an HTTP response body (`no-cause-in-http-response`), `Effect.ignore` immediately before `Effect.as` in a pipe, which only hides the failure (`no-effect-ignore-then-as`), `expect` inside an `if`, which passes when the branch is skipped (`avoid-expect-in-if`), and `yield*` inside a `for` loop instead of `Effect.forEach` with an explicit concurrency (`yield-in-for-loop`). Do not use the package's other rules: most duplicate anti-slop, `@effect/tsgo`, or cevr checks, or ban ordinary language features. `enfect/throw-in-effect-gen` stays off because version 0.10.0 reports every `throw` lexically inside the generator, including throws in nested helpers, promise callbacks, object methods, and `Effect.sync` thunks, and misses `Effect.fn("name")(function* ...)`; `anti-slop-effect/throw-in-effect-gen` is the corrected port. `effect-promise-vs-trypromise`, `yield-in-for-loop`, `effect-run-in-body`, and `avoid-expect-in-if` produce many findings in established codebases, mostly in tests; report the counts and fix them only when cleanup is authorized.
 
-   Complete when the generic rules, eligible Effect rules, the nine `enfect/*` rules, and, on Effect 4.1 or later, the ten `effect/*` rules are registered and existing configuration is preserved.
+   Complete when the generic rules, eligible Effect rules, the eight `enfect/*` rules, and, on Effect 4.1 or later, the ten `effect/*` rules are registered and existing configuration is preserved.
 
    If a package manifest declares `xstate` as a direct dependency, or the user asks for XState rules, also register the opt-in XState plugin. Do not enable it for a transitive `xstate` in a lockfile:
 
