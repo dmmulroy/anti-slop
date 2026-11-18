@@ -157,7 +157,31 @@ Complete when the operation and target path are established and pre-existing wor
 
    `--tsrs-lint` is experimental in `@effect/tsgo`. If `effect-tsgo --tsrs-lint` fails to start or crashes on the repository, fall back to tsgolint: install the `oxlint-tsgolint` version the same README lists, add `"prepare": "effect-tsgo patch --oxlint"` and run it, and lint with plain `oxlint`. Report the fallback and the tsrs failure to the user.
 
-   Complete when the generic rules and eligible Effect rules are registered and existing configuration is preserved.
+   When the repository's direct `effect` dependency is 4.1 or later, also install [`oxlint-plugin-effect`](https://github.com/cevr/effect-oxlint) (cevr/effect-oxlint, MIT) as a development dependency, pinned exactly at the version `npm view oxlint-plugin-effect version` reports. Its rules load from the package, not from the vendored copy. The plugin imports `effect` at runtime (peer range `>=4.1.0 <5`) and depends on `@oxlint/plugins` ^1.94. On Effect 3 or 4.0, skip it and report why; do not upgrade `effect` for it. If the repository's `oxlint` is older than 1.94, report that and ask before upgrading `oxlint` and `@oxlint/plugins` together. Register it and enable exactly these nine rules:
+
+   ```ts
+   jsPlugins: [
+     { name: "effect", specifier: "oxlint-plugin-effect/plugin" },
+   ],
+   rules: {
+     "effect/noAliasTestLayer": "error",
+     "effect/noEagerAcquire": "error",
+     "effect/noManagedRuntimeInEffect": "error",
+     "effect/noPerCallCacheConstruction": "error",
+     "effect/noPointFreeLog": "error",
+     "effect/noRunCollectOnUnboundedStream": "error",
+     "effect/noSilentCatchAll": "error",
+     "effect/noUnboundedConcurrency": "error",
+     "effect/requireSuppressionReason": "error",
+   },
+   ```
+
+   These rules catch Effect code that type-checks but misbehaves at runtime: a `Test`/`Fake`/`Stub`/`Mock` layer that only returns the live layer (`noAliasTestLayer`), an `acquireRelease` whose resource is built before acquire runs (`noEagerAcquire`), `ManagedRuntime.make` inside an Effect program (`noManagedRuntimeInEffect`), `Effect.cached` or `Cache.make` inside an `Effect.fn` operation, which builds new cache state on every call (`noPerCallCacheConstruction`), a logger passed point-free to a callback that also receives an index (`noPointFreeLog`), `Stream.runCollect` on a stream that never ends (`noRunCollectOnUnboundedStream`), `catch`/`catchCause` handlers that turn every failure into `Effect.void` (`noSilentCatchAll`), `concurrency: "unbounded"` over a collection that can grow (`noUnboundedConcurrency`), and lint, Effect, or TypeScript suppressions without a ` -- ` reason (`requireSuppressionReason`). `noUnboundedConcurrency` pairs with `effecttsgo/missing-concurrency-option`: the tsgo rule asks for a concurrency option and this rule rejects `"unbounded"` as the answer.
+
+   Do not extend `presets/recommended.json` or spread the `recommended` preset, and do not enable other `effect/*` rules. The preset turns on rules that duplicate anti-slop, landmines, or `@effect/tsgo` checks (the anti-slop copies such as `noChainedTypeAssertions`, plus `noModuleMocks`, `noFixedWaitInTests`, `noNestedEffectGen`, `preferEffectFn`, `noEffectDo`, `noGlobals`, and `noNodeBuiltinImport`), bans ordinary language features (`noNullish`, `noTernary`, `noAsyncFunction`, `noThrowStatement`, `noTryCatch`, `noNewPromise`, `noNewError`, `noAs`, and `noComments`, which also deletes the SAFETY comments `require-safety-comment-for-type-assertion` requires), and encodes runtime or test-layout policy that anti-slop leaves to the repository. `effect/noUnboundedRetry` stays off because version 0.32.4 reports retries bounded with `Schedule.upTo({ times })` or `Schedule.upTo({ duration })`, the Effect 4.1 way to bound a schedule; `effect/requireForceKillAfter` stays off because it reports every `ChildProcess.make`, including short-lived commands in tests.
+
+   When cleanup is authorized, fix each finding at its cause: give each suppression a reason after ` -- ` that says why the check does not apply (or remove the suppression), choose a finite concurrency, record the cause before recovering or recover a named failure instead of erasing it (switching to `Effect.ignore` hides the same failure), build the resource inside acquire, construct caches once in the owning layer, and terminate a stream with `take`, `takeUntil`, `takeWhile`, or `timeout` before collecting it.
+   Complete when the generic rules, eligible Effect rules, and, on Effect 4.1 or later, the nine `effect/*` rules are registered and existing configuration is preserved.
 
    Optional, paid checks. Offer them only when the user opts in, because each match or diff is a paid model request:
 

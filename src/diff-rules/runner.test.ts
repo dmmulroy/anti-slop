@@ -1,4 +1,4 @@
-// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/global-console, effecttsgo/process-env, effecttsgo/async-function, effecttsgo/prefer-schema-over-json
+// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/global-console, effecttsgo/process-env, effecttsgo/async-function, effecttsgo/prefer-schema-over-json -- tests a standalone CLI outside any Effect runtime against real git repositories
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";

@@ -1,5 +1,4 @@
-// A standalone CLI outside any Effect runtime, so Effect's platform services do not apply.
-// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/prefer-schema-over-json, effecttsgo/async-function
+// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/prefer-schema-over-json, effecttsgo/async-function -- a standalone CLI outside any Effect runtime, so Effect's platform services do not apply
 
 import { existsSync, readFileSync } from "node:fs";
 import { extname, isAbsolute, join, resolve } from "node:path";

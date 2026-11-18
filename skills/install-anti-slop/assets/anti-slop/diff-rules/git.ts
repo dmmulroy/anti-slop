@@ -1,5 +1,4 @@
-// A standalone CLI outside any Effect runtime, so Effect's platform services do not apply.
-// oxlint-disable effecttsgo/node-builtin-import
+// oxlint-disable effecttsgo/node-builtin-import -- a standalone CLI outside any Effect runtime, so Effect's platform services do not apply
 
 import { spawnSync } from "node:child_process";
 import { closeSync, openSync, readSync, statSync } from "node:fs";

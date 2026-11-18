@@ -8,7 +8,10 @@ const effectTsgoRules = Object.values(presets).flatMap((preset) =>
 export default defineConfig({
 	extends: Object.values(presets),
 	ignorePatterns: ["src/vendor/**"],
-	jsPlugins: [{ name: "landmines", specifier: "@interfere/landmines/testing" }],
+	jsPlugins: [
+		{ name: "landmines", specifier: "@interfere/landmines/testing" },
+		{ name: "effect", specifier: "oxlint-plugin-effect/plugin" },
+	],
 	rules: {
 		...Object.fromEntries(effectTsgoRules.map((rule) => [rule, "error"])),
 		"effecttsgo/missing-pipeable-signature": "off",
@@ -23,6 +26,15 @@ export default defineConfig({
 		"landmines/no-fixed-sleep": "error",
 		"landmines/no-unsignaled-poll": "error",
 		"landmines/no-flake-masking": "error",
+		"effect/noAliasTestLayer": "error",
+		"effect/noEagerAcquire": "error",
+		"effect/noManagedRuntimeInEffect": "error",
+		"effect/noPerCallCacheConstruction": "error",
+		"effect/noPointFreeLog": "error",
+		"effect/noRunCollectOnUnboundedStream": "error",
+		"effect/noSilentCatchAll": "error",
+		"effect/noUnboundedConcurrency": "error",
+		"effect/requireSuppressionReason": "error",
 	},
 	overrides: [
 		{

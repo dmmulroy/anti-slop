@@ -1,5 +1,4 @@
-// A standalone CLI outside any Effect runtime, so Effect's platform services do not apply.
-// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/prefer-schema-over-json, effecttsgo/async-function, effecttsgo/global-timers, effecttsgo/new-promise
+// oxlint-disable effecttsgo/node-builtin-import, effecttsgo/prefer-schema-over-json, effecttsgo/async-function, effecttsgo/global-timers, effecttsgo/new-promise -- a standalone CLI outside any Effect runtime, so Effect's platform services do not apply
 
 import { spawn } from "node:child_process";
 import type { JSONSchema7 } from "ai";
