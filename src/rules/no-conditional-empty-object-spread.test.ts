@@ -27,6 +27,23 @@ tester.run(
         code: "const result = { ...(condition ? {} : { value }) };",
         errors: [error],
       },
+      // Regression: assertions around the empty branch or the whole conditional must be peeled.
+      {
+        code: "const result = { ...(condition ? { value } : ({} as { value?: string })) };",
+        errors: [error],
+      },
+      {
+        code: "const result = { ...(condition ? { value } : ({} satisfies { value?: string })) };",
+        errors: [error],
+      },
+      {
+        code: "const result = { ...((condition ? { value } : {}) as { value?: string }) };",
+        errors: [error],
+      },
+      {
+        code: "const result = { ...(condition ? { value } : {})! };",
+        errors: [error],
+      },
     ],
   },
 );
