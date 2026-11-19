@@ -12,6 +12,7 @@ export default defineConfig({
 		{ name: "landmines", specifier: "@interfere/landmines/testing" },
 		{ name: "effect", specifier: "oxlint-plugin-effect/plugin" },
 		{ name: "enfect", specifier: "@enfect/oxlint" },
+		{ name: "ai-guard", specifier: "eslint-plugin-ai-guard" },
 	],
 	rules: {
 		...Object.fromEntries(effectTsgoRules.map((rule) => [rule, "error"])),
@@ -46,6 +47,15 @@ export default defineConfig({
 		"enfect/no-effect-ignore-then-as": "error",
 		"enfect/avoid-expect-in-if": "error",
 		"enfect/yield-in-for-loop": "error",
+		"enfect/prefer-duration-constructors": "error",
+		"enfect/avoid-mutable-state": "error",
+		"ai-guard/no-placeholder-implementation": "error",
+		"ai-guard/no-test-env-branch": "error",
+		"ai-guard/no-tautological-assertion": "error",
+		"ai-guard/no-assertionless-test": "error",
+		"ai-guard/no-undeclared-import": "error",
+		"ai-guard/no-silent-fallback": "error",
+		"ai-guard/no-invisible-unicode": "error",
 	},
 	overrides: [
 		{

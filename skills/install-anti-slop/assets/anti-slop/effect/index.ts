@@ -16,6 +16,7 @@ import { preferYieldServiceRule } from "./rules/prefer-yield-service.ts";
 import { requireCauseWhenNarrowingRule } from "./rules/require-cause-when-narrowing.ts";
 import { requireOperationSpanRule } from "./rules/require-operation-span.ts";
 import { requireServiceMakeLayerRule } from "./rules/require-service-make-layer.ts";
+import { streamLargeFilesRule } from "./rules/stream-large-files.ts";
 import { throwInEffectGenRule } from "./rules/throw-in-effect-gen.ts";
 import { withModes } from "../modes/wrap.ts";
 
@@ -39,6 +40,7 @@ const antiSlopEffectPlugin = eslintCompatPlugin({
 		"require-cause-when-narrowing": requireCauseWhenNarrowingRule,
 		"require-operation-span": requireOperationSpanRule,
 		"require-service-make-layer": requireServiceMakeLayerRule,
+		"stream-large-files": streamLargeFilesRule,
 		"throw-in-effect-gen": throwInEffectGenRule,
 	},
 });
