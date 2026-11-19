@@ -41,6 +41,13 @@ const stripSlashes = (url: string): string => url.replace(/\/+$/, "");
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+// diff-rules must run when copied on its own, so it keeps its own copy of shared/error-message.ts.
+const hasMessage = (cause: unknown): cause is { readonly message: string; readonly [key: string]: unknown } =>
+  isRecord(cause) && typeof cause.message === "string";
+
+/** The message of a thrown value, or its string form when it has none. */
+export const errorMessage = (cause: unknown): string => (hasMessage(cause) ? cause.message : String(cause));
+
 // --- Shared: the Vercel AI SDK, loaded only by the backends that use it ---
 
 /** Load an optional package so the `command` backend works without the AI SDK installed. */
@@ -62,11 +69,11 @@ const AI_PACKAGES = "ai zod";
 
 /** One line per failure: the status code and provider message, without the SDK's request dump. */
 function describeAiError(error: unknown): string {
-  if (!(error instanceof Error)) return String(error);
+  if (!hasMessage(error)) return String(error);
   // RetryError keeps every attempt's error; the last one has the status and provider message.
   const errors: ReadonlyArray<unknown> | undefined = isRecord(error) && Array.isArray(error.errors) ? error.errors : undefined;
   const last = errors?.at(-1);
-  const source = last instanceof Error ? last : error;
+  const source = hasMessage(last) ? last : error;
   const status = isRecord(source) && typeof source.statusCode === "number" ? source.statusCode : undefined;
   const attempts = errors === undefined || errors.length < 2 ? "" : ` (after ${errors.length} attempts)`;
   return `${status === undefined ? "" : `http ${status}: `}${source.message}${attempts}`;

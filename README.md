@@ -13,7 +13,7 @@ anti-slop was created by [Dillon Mulroy](https://github.com/dmmulroy) at [dmmulr
 - Diff rules that judge a whole change set, for smells such as shotgun surgery and scope creep.
 - Four test-honesty rules from [interfere-inc/landmines](https://github.com/interfere-inc/landmines) (MIT), installed from npm as `@interfere/landmines`: `strict-msw`, `no-fixed-sleep`, `no-unsignaled-poll`, and `no-flake-masking`.
 - Ten Effect runtime rules from [cevr/effect-oxlint](https://github.com/cevr/effect-oxlint) (MIT), installed from npm as `oxlint-plugin-effect` in repositories on Effect 4.1 or later, such as `noSilentCatchAll`, `noUnboundedConcurrency`, and `requireForceKillAfter`.
-- Ten Effect rules from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) (MIT), installed from npm as `@enfect/oxlint` in Effect repositories, such as `effect-promise-vs-trypromise`, `prefer-redacted-config`, and `avoid-mutable-state`, and `anti-slop-effect/stream-large-files`, ported from enfect's `stream-large-files` pattern.
+- Eleven Effect rules from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) (MIT), installed from npm as `@enfect/oxlint` in Effect repositories, such as `effect-promise-vs-trypromise`, `prefer-option-over-null`, and `avoid-mutable-state`, and `anti-slop-effect/stream-large-files`, ported from enfect's `stream-large-files` pattern.
 - Six AI-shortcut rules from [ai-guard-dev/eslint-plugin-ai-guard](https://github.com/ai-guard-dev/eslint-plugin-ai-guard) (MIT), installed from npm as `eslint-plugin-ai-guard`, such as `no-placeholder-implementation`, `no-test-env-branch`, and `no-undeclared-import`, and `anti-slop/no-dev-env-branch`, a development-mode variant of `no-test-env-branch`.
 - An `integrity` script that fails a branch that weakens its own checks: it runs `ai-guard integrity` and adds checks for oxlint disable comments without a reason and weakened oxlint configs.
 
@@ -36,7 +36,7 @@ Then ask your coding agent to install anti-slop. The skill does the following:
 - runs `scripts/install.mjs`, which copies the plugin to `tools/oxlint/anti-slop/`;
 - installs `oxlint` and `@oxlint/plugins` at matching versions, `@interfere/landmines`, `eslint-plugin-ai-guard`, and `@typescript-eslint/parser`;
 - merges the plugin into your existing Oxlint or Vite+ config, with every core rule, the four landmines testing rules, and the six ai-guard rules enabled;
-- enables the Effect rules, the `@effect/tsgo` diagnostics, and the ten `@enfect/oxlint` rules when `effect` is a direct dependency, plus the ten cevr/effect-oxlint rules from `oxlint-plugin-effect` on Effect 4.1 or later;
+- enables the Effect rules, the `@effect/tsgo` diagnostics, and the eleven `@enfect/oxlint` rules when `effect` is a direct dependency, plus the ten cevr/effect-oxlint rules from `oxlint-plugin-effect` on Effect 4.1 or later;
 - enables the XState rules when `xstate` is a direct dependency;
 - adds an `integrity` script, a pre-commit hook (free rules on staged files), and a pre-push hook (free rules plus Jev rules on changed lines, then `integrity`) with your existing hook tool;
 - runs your lint and typecheck.
@@ -102,6 +102,7 @@ export default defineConfig({
     "anti-slop/no-conditional-spread": "error",
     "anti-slop/no-dev-env-branch": "error",
     "anti-slop/no-disabled-type-assertion-rules": "error",
+    "anti-slop/no-instanceof": "error",
     "anti-slop/no-known-value-widening": "error",
     "anti-slop/no-module-mocking": "error",
     // Only lines changed on the branch: a ratchet for a rule the codebase does not pass yet.
@@ -172,6 +173,7 @@ export default defineConfig({
     "enfect/yield-in-for-loop": "warn",
     "enfect/prefer-duration-constructors": "error",
     "enfect/avoid-mutable-state": "error",
+    "enfect/prefer-option-over-null": "error",
 
     "anti-slop-xstate/no-direct-xstate-create-machine": "error",
     "anti-slop-xstate/no-direct-xstate-use-selector": "error",
@@ -191,7 +193,7 @@ export default defineConfig({
   },
   overrides: [
     {
-      // Tests throw inside Effect generators, run Effects, and fan out fixtures on purpose.
+      // Tests throw inside Effect generators, run Effects, fan out fixtures, and pass nullable fixtures on purpose.
       files: ["**/*.test.*", "**/*.spec.*", "**/test/**", "**/tests/**", "**/__tests__/**"],
       rules: {
         "anti-slop-effect/throw-in-effect-gen": "off",
@@ -199,6 +201,7 @@ export default defineConfig({
         "enfect/effect-promise-vs-trypromise": "off",
         "enfect/avoid-option-getorthrow": "off",
         "enfect/effect-run-in-body": "off",
+        "enfect/prefer-option-over-null": "off",
       },
     },
     {
@@ -361,6 +364,7 @@ Both Jev and the diff rules use the first credential they find.
 | [`no-conditional-spread`](src/rules/no-conditional-spread.ts) | Disallow spreading ternary and logical expressions. Build the value explicitly instead. |
 | [`no-dev-env-branch`](src/rules/no-dev-env-branch.ts) | Disallow production code that returns fake data (mock-named values, literal objects and arrays) or a success result, or skips a check, when it detects development mode (`process.env.NODE_ENV === "development"`, `!== "production"`, `import.meta.env.DEV`, `__DEV__`). Development-only tooling, logging, and configuration are allowed. Ported from ai-guard's `no-test-env-branch` (MIT). |
 | [`no-disabled-type-assertion-rules`](src/rules/no-disabled-type-assertion-rules.ts) | Disallow inline disable comments for the type-assertion rules, and disable comments that name no rule. |
+| [`no-instanceof`](src/rules/no-instanceof.ts) | Disallow every `instanceof` expression. Use `Schema.is(X)` for schemas and `Schema.Class` values, `Predicate.isTagged`, a `_tag` refinement, or `Schema.is` for tagged errors, `Predicate.isError` for unknown thrown values, and `Array.isArray`, `Predicate.isDate`, and similar predicates for builtins. `effecttsgo/instance-of-schema` covers only `instanceof` against Effect Schema types, so this rule covers the rest, including tests. |
 | [`no-known-value-widening`](src/rules/no-known-value-widening.ts) | Disallow syntactically established values from flowing into explicitly broad or anonymous target types that discard useful evidence. |
 | [`no-module-mocking`](src/rules/no-module-mocking.ts) | Disallow Vitest and Jest module mocking; tests must replace dependencies through real interfaces. |
 | [`no-object-parameters`](src/rules/no-object-parameters.ts) | Disallow object function parameters; inputs must use an owner-provided type and be parsed at their boundary. |
@@ -421,7 +425,7 @@ These ten rules come from [cevr/effect-oxlint](https://github.com/cevr/effect-ox
 
 ### Effect conventions (`enfect`, error unless noted)
 
-These ten rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) by Marc Suesser, under the MIT license. anti-slop does not vendor them: in Effect repositories, install `@enfect/oxlint` from npm and register it as the `enfect` plugin, a name that cannot collide with cevr's `effect` plugin. The package brings its own `effect`, so it works with any Effect version. Its other rules duplicate anti-slop, `@effect/tsgo`, or cevr checks, or ban ordinary language features. `throw-in-effect-gen` stays off because version 0.10.0 reports throws in helpers, promise callbacks, and object methods that are only declared inside the generator, and misses `Effect.fn("name")(function* ...)`; use `anti-slop-effect/throw-in-effect-gen`, a corrected port, instead.
+These eleven rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) by Marc Suesser, under the MIT license. anti-slop does not vendor them: in Effect repositories, install `@enfect/oxlint` from npm and register it as the `enfect` plugin, a name that cannot collide with cevr's `effect` plugin. The package brings its own `effect`, so it works with any Effect version. Its other rules duplicate anti-slop, `@effect/tsgo`, or cevr checks, or ban ordinary language features. `throw-in-effect-gen` stays off because version 0.10.0 reports throws in helpers, promise callbacks, and object methods that are only declared inside the generator, and misses `Effect.fn("name")(function* ...)`; use `anti-slop-effect/throw-in-effect-gen`, a corrected port, instead.
 
 | Rule | What it checks |
 | --- | --- |
@@ -435,6 +439,7 @@ These ten rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfect
 | `yield-in-for-loop` | `yield*` inside a `for` loop instead of `Effect.forEach` with an explicit concurrency. Warns. |
 | `prefer-duration-constructors` | A raw number of milliseconds passed to `Effect.sleep`, `Effect.delay`, `Effect.timeout*`, `Schedule.spaced`, `Schedule.fixed`, `Schedule.windowed`, or `Schedule.duration`, or as a `duration` option, instead of a `Duration` constructor. |
 | `avoid-mutable-state` | `let` bindings inside `Layer.effect`, `Layer.succeed`, or a `Context.Service` `make`, which hide fiber-visible state. Use `Ref`, `SynchronizedRef`, or `Effect.cached`. |
+| `prefer-option-over-null` | Every `T \| null`, `T \| undefined`, or `T \| null \| undefined` union written in a type position: annotations, parameters, return types, aliases, interface members, casts, and type arguments such as `Promise<User \| null>`. Optional properties and parameters (`name?: string`), inferred types, and `T \| void` are not reported, and there is no exemption for JSON, DOM, or third-party boundary types. Use `Option<T>`. Off for tests. |
 
 ### Effect (`anti-slop-effect`, error)
 

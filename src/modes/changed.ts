@@ -4,6 +4,8 @@ import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { dirname, relative, sep } from "node:path";
 
+import { errorMessage } from "../shared/error-message.ts";
+
 /**
  * How a rule picks what to check, set in its own options. `"all"` (the default) checks every line;
  * `"changed"` checks only lines that differ from the merge base of `HEAD` and the default branch,
@@ -42,8 +44,6 @@ const succeeds = (cwd: string, args: ReadonlyArray<string>): boolean => {
 		return false;
 	}
 };
-
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message.trim() : String(error));
 
 const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
 
@@ -141,7 +141,7 @@ function repoChanges(dir: string, base: string | undefined, warn: (message: stri
 		}
 	} catch (error) {
 		if (root === undefined) rootByDir.set(dir, null);
-		warn(`changed-lines mode could not diff ${dir}, checking every line: ${messageOf(error)}`);
+		warn(`changed-lines mode could not diff ${dir}, checking every line: ${errorMessage(error).trim()}`);
 		return null;
 	}
 }

@@ -16,6 +16,7 @@
 
 // oxlint-disable effecttsgo/process-env, effecttsgo/global-console -- a standalone CLI outside any Effect runtime, so Effect's platform services do not apply
 
+import { errorMessage } from "./backends.ts";
 import { BACKEND_NAMES, type BackendName } from "./config.ts";
 import type { ChangeMode } from "./git.ts";
 import { runDiffRules, type RunOptions } from "./runner.ts";
@@ -80,7 +81,7 @@ let options: RunOptions;
 try {
   options = parseArgs(process.argv.slice(2));
 } catch (error) {
-  console.error(`diff-rules: ${error instanceof Error ? error.message : String(error)}\n${USAGE}`);
+  console.error(`diff-rules: ${errorMessage(error)}\n${USAGE}`);
   process.exit(2);
 }
 const result = await runDiffRules(options);
