@@ -1,6 +1,6 @@
 // oxlint-disable effecttsgo/async-function, effecttsgo/prefer-schema-over-json -- a standalone CLI outside any Effect runtime, so Effect's platform services do not apply
 
-import { chooseBackend, type Backend, type RuleAnswer } from "./backends.ts";
+import { chooseBackend, errorMessage, type Backend, type RuleAnswer } from "./backends.ts";
 import { defaultCacheDir, cacheKey, readCachedAnswer, writeCachedAnswer } from "./cache.ts";
 import { loadConfig, type BackendName, type ResolvedConfig } from "./config.ts";
 import { collectChanges, historySummary, type ChangeMode, type ChangeSet } from "./git.ts";
@@ -63,8 +63,6 @@ export interface RunResult {
 
 const PREFIX = "diff-rules:";
 
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
-
 const isCI = (env: Env): boolean => {
   const value = env.CI?.trim().toLowerCase();
   return value !== undefined && value.length > 0 && value !== "false" && value !== "0";
@@ -101,13 +99,13 @@ async function judgeChunk(
       try {
         writeCachedAnswer(cacheDir, cacheKey(backend, rule, input), answer);
       } catch (error) {
-        warn(`could not write cache in ${cacheDir}: ${messageOf(error)}`);
+        warn(`could not write cache in ${cacheDir}: ${errorMessage(error)}`);
       }
     }
     return { answers: [...answers, ...fresh], cached, requested: true };
   } catch (error) {
     const where = input.total === 1 ? "" : ` (part ${input.index + 1} of ${input.total})`;
-    return { answers, cached, requested: true, error: `${backend.name}${where}: ${messageOf(error)}` };
+    return { answers, cached, requested: true, error: `${backend.name}${where}: ${errorMessage(error)}` };
   }
 }
 
@@ -198,7 +196,7 @@ export async function runDiffRules(options: RunOptions): Promise<RunResult> {
       ...(options.base === undefined ? {} : { base: options.base }),
     });
   } catch (error) {
-    warn(messageOf(error));
+    warn(errorMessage(error));
     return finish(2, undefined, "");
   }
   for (const note of change.notes) warn(note);

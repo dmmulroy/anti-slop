@@ -7,6 +7,7 @@ import { noChainedTypeAssertionsRule } from "./rules/no-chained-type-assertions.
 import { noConditionalSpreadRule } from "./rules/no-conditional-spread.ts";
 import { noDevEnvBranchRule } from "./rules/no-dev-env-branch.ts";
 import { noDisabledTypeAssertionRulesRule } from "./rules/no-disabled-type-assertion-rules.ts";
+import { noInstanceofRule } from "./rules/no-instanceof.ts";
 import { noKnownValueWideningRule } from "./rules/no-known-value-widening.ts";
 import { noModuleMockingRule } from "./rules/no-module-mocking.ts";
 import { noObjectParametersRule } from "./rules/no-object-parameters.ts";
@@ -35,6 +36,7 @@ const antiSlopPlugin = eslintCompatPlugin({
 		"no-conditional-spread": noConditionalSpreadRule,
 		"no-dev-env-branch": noDevEnvBranchRule,
 		"no-disabled-type-assertion-rules": noDisabledTypeAssertionRulesRule,
+		"no-instanceof": noInstanceofRule,
 		"no-known-value-widening": noKnownValueWideningRule,
 		"no-module-mocking": noModuleMockingRule,
 		"no-object-parameters": noObjectParametersRule,

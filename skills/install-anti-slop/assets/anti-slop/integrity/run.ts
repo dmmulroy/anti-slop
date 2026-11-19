@@ -15,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
+import { errorMessage } from "../shared/error-message.ts";
 import { checkIntegrity, type IntegrityFinding } from "./checks.ts";
 
 const USAGE = "usage: node integrity/run.ts [--base <ref>]";
@@ -68,6 +69,6 @@ function run(args: ReadonlyArray<string>): number {
 try {
 	process.exit(run(process.argv.slice(2)));
 } catch (error) {
-	console.error(`anti-slop integrity: ${error instanceof Error ? error.message : String(error)}`);
+	console.error(`anti-slop integrity: ${errorMessage(error)}`);
 	process.exit(2);
 }

@@ -9,6 +9,7 @@ export default defineConfig({
 	extends: Object.values(presets),
 	ignorePatterns: ["src/vendor/**"],
 	jsPlugins: [
+		{ name: "anti-slop", specifier: "./src/index.ts" },
 		{ name: "landmines", specifier: "@interfere/landmines/testing" },
 		{ name: "effect", specifier: "oxlint-plugin-effect/plugin" },
 		{ name: "enfect", specifier: "@enfect/oxlint" },
@@ -24,6 +25,7 @@ export default defineConfig({
 		"effecttsgo/prefer-effect-string": "off",
 		"oxc/no-accumulating-spread": "error",
 		"typescript/no-non-null-assertion": "error",
+		"anti-slop/no-instanceof": "error",
 		"landmines/strict-msw": "error",
 		"landmines/no-fixed-sleep": "error",
 		"landmines/no-unsignaled-poll": "error",

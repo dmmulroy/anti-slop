@@ -27,6 +27,8 @@ import { spawnSync } from "node:child_process";
 import { statSync } from "node:fs";
 import { extname } from "node:path";
 
+import { errorMessage } from "../shared/error-message.ts";
+
 const LINTABLE = new Set([".js", ".mjs", ".cjs", ".jsx", ".ts", ".mts", ".cts", ".tsx"]);
 // What oxlint-plugin-jev reads to pick a backend. Without them it skips every Jev rule. `CI` goes
 // too, because the Jev plugins fail a CI run that has no credential.
@@ -97,6 +99,6 @@ if (!isStage(stage)) {
 try {
 	process.exit(run(stage, command));
 } catch (error) {
-	console.error(`anti-slop lint: ${error instanceof Error ? error.message : String(error)}`);
+	console.error(`anti-slop lint: ${errorMessage(error)}`);
 	process.exit(2);
 }
