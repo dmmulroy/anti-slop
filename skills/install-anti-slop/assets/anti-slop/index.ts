@@ -18,7 +18,6 @@ import { noForbiddenTermInSymbolNamesRule } from "./rules/no-shape-in-symbol-nam
 import { noUnknownParametersRule } from "./rules/no-unknown-parameters.ts";
 import { noUnknownReturnsRule } from "./rules/no-unknown-returns.ts";
 import { noUnknownTypeAliasesRule } from "./rules/no-unknown-type-aliases.ts";
-import { noTautologicalAssertionRule } from "./rules/no-tautological-assertion.ts";
 import { noUnsafeDictionaryTypeRule } from "./rules/no-unsafe-dictionary-type.ts";
 import { noWidenThenAssertRule } from "./rules/no-widen-then-assert.ts";
 import { requireReadableSpacingRule } from "./rules/require-readable-spacing.ts";
@@ -45,7 +44,6 @@ const antiSlopPlugin = eslintCompatPlugin({
 		"no-runtime-typeof": noRuntimeTypeofRule,
 		"no-unsafe-dictionary-type": noUnsafeDictionaryTypeRule,
 		"no-shape-in-symbol-names": noForbiddenTermInSymbolNamesRule,
-		"no-tautological-assertion": noTautologicalAssertionRule,
 		"no-unknown-parameters": noUnknownParametersRule,
 		"no-unknown-returns": noUnknownReturnsRule,
 		"no-unknown-type-aliases": noUnknownTypeAliasesRule,

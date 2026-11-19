@@ -9,7 +9,6 @@ export default defineConfig({
 	extends: Object.values(presets),
 	ignorePatterns: ["src/vendor/**"],
 	jsPlugins: [
-		{ name: "anti-slop", specifier: "./src/index.ts" },
 		{ name: "landmines", specifier: "@interfere/landmines/testing" },
 		{ name: "effect", specifier: "oxlint-plugin-effect/plugin" },
 		{ name: "enfect", specifier: "@enfect/oxlint" },
@@ -52,10 +51,10 @@ export default defineConfig({
 		"enfect/avoid-mutable-state": "error",
 		"ai-guard/no-placeholder-implementation": "error",
 		"ai-guard/no-test-env-branch": "error",
+		"ai-guard/no-tautological-assertion": "error",
 		"ai-guard/no-assertionless-test": "error",
 		"ai-guard/no-undeclared-import": "error",
 		"ai-guard/no-silent-fallback": "error",
-		"anti-slop/no-tautological-assertion": "error",
 	},
 	overrides: [
 		{
