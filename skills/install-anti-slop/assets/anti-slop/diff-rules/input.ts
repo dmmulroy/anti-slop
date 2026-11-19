@@ -1,3 +1,5 @@
+// oxlint-disable effecttsgo/node-builtin-import -- a standalone CLI outside any Effect runtime, so Effect's platform services do not apply
+
 import { createHash } from "node:crypto";
 import type { ChangeSet, FileChange, HistorySummary } from "./git.ts";
 import type { DiffRule } from "./rules.ts";

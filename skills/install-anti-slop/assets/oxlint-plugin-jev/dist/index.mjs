@@ -1,8 +1,8 @@
-import { a as locationCandidates, c as probabilityOf, d as verdictAsk, i as locationAsk, l as selectedLocation, n as isValidAnswer, o as locationOfLine, r as locates, s as messageOf, t as buildRequest, u as truncateSnippet } from "./jev-BC3UITJZ.mjs";
+import { a as locationCandidates, c as probabilityOf, d as verdictAsk, i as locationAsk, l as selectedLocation, n as isValidAnswer, o as locationOfLine, r as locates, s as messageOf$1, t as buildRequest, u as truncateSnippet } from "./jev-BC3UITJZ.mjs";
 import { askModel } from "./sync-jev.mjs";
-import { changedLines, overlaps, ruleMode, settingsBase } from "./changed.mjs";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 //#region src/cache.ts
 const defaultCacheDir = () => path.join(process.cwd(), "node_modules", ".cache", "oxlint-plugin-jev");
 /** One cached answer, or null when the entry is missing or not shaped like one. */
@@ -71,7 +71,7 @@ function answerAll({ asks, backend, timeoutMs, cacheDir, onCacheError }) {
 		try {
 			writeCache(cacheDir, ask.key, entry);
 		} catch (error) {
-			onCacheError?.(`could not write cache in ${cacheDir}: ${messageOf(error)}`);
+			onCacheError?.(`could not write cache in ${cacheDir}: ${messageOf$1(error)}`);
 		}
 	}
 	if (missingVerdict !== null) return {
@@ -185,6 +185,192 @@ function backendFor(options) {
 		},
 		id: `gateway ${model}`
 	};
+}
+//#endregion
+//#region src/changed.ts
+/** Tried in order after `refs/remotes/origin/HEAD` when resolving the default branch. */
+const DEFAULT_BRANCHES = [
+	"origin/main",
+	"origin/master",
+	"main",
+	"master"
+];
+const BASE_ENV = "JEV_CHANGED_BASE";
+const git = (cwd, args) => execFileSync("git", [
+	"-c",
+	"core.quotePath=false",
+	...args
+], {
+	cwd,
+	encoding: "utf8",
+	maxBuffer: 268435456,
+	stdio: [
+		"ignore",
+		"pipe",
+		"pipe"
+	]
+});
+const succeeds = (cwd, args) => {
+	try {
+		git(cwd, args);
+		return true;
+	} catch {
+		return false;
+	}
+};
+const messageOf = (error) => error instanceof Error ? error.message.trim() : String(error);
+const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+/** Parses `git diff -U0` output into the new-side line numbers each file changed. */
+function parseDiff(diff) {
+	const files = /* @__PURE__ */ new Map();
+	let current = null;
+	for (const line of diff.split("\n")) {
+		if (line.startsWith("+++ ")) {
+			const target = line.slice(4);
+			current = null;
+			if (target.startsWith("b/")) {
+				current = files.get(target.slice(2)) ?? /* @__PURE__ */ new Set();
+				files.set(target.slice(2), current);
+			}
+			continue;
+		}
+		const hunk = current === null ? null : HUNK.exec(line);
+		if (hunk === null || current === null) continue;
+		const start = Number(hunk[1]);
+		const count = hunk[2] === void 0 ? 1 : Number(hunk[2]);
+		if (count === 0) {
+			current.add(start);
+			current.add(start + 1);
+		}
+		for (let offset = 0; offset < count; offset++) current.add(start + offset);
+	}
+	return files;
+}
+/**
+* The default branch: what `refs/remotes/origin/HEAD` points at (`origin/main` or
+* `origin/master`), else the first of `DEFAULT_BRANCHES` that names a commit, else `null`.
+*/
+function defaultBase(cwd) {
+	try {
+		const name = git(cwd, [
+			"symbolic-ref",
+			"-q",
+			"refs/remotes/origin/HEAD"
+		]).trim().replace(/^refs\/remotes\//, "");
+		if (name !== "" && succeeds(cwd, [
+			"rev-parse",
+			"--verify",
+			"-q",
+			`${name}^{commit}`
+		])) return name;
+	} catch {}
+	return DEFAULT_BRANCHES.find((branch) => succeeds(cwd, [
+		"rev-parse",
+		"--verify",
+		"-q",
+		`${branch}^{commit}`
+	])) ?? null;
+}
+/** The explicit base when given, then `JEV_CHANGED_BASE`, then the default branch. */
+function resolveBase(cwd, base) {
+	return base?.trim() || process.env[BASE_ENV]?.trim() || defaultBase(cwd);
+}
+const MAX_AGE_MS = process.argv.includes("--lsp") ? 1e3 : Infinity;
+const rootByDir = /* @__PURE__ */ new Map();
+const changesByKey = /* @__PURE__ */ new Map();
+function computeChanges(root, base) {
+	const computedAt = Date.now();
+	if (!succeeds(root, [
+		"rev-parse",
+		"--verify",
+		"-q",
+		"HEAD"
+	])) return {
+		root,
+		files: null,
+		computedAt
+	};
+	const ref = resolveBase(root, base);
+	if (ref === null) throw new Error(`no default branch found (origin/HEAD, ${DEFAULT_BRANCHES.join(", ")}); set ${BASE_ENV} or the rule's base option`);
+	const mergeBase = git(root, [
+		"merge-base",
+		ref,
+		"HEAD"
+	]).trim();
+	const diff = git(root, [
+		"diff",
+		"-U0",
+		"--no-color",
+		"--no-ext-diff",
+		"--no-renames",
+		"--src-prefix=a/",
+		"--dst-prefix=b/",
+		mergeBase,
+		"--"
+	]);
+	const files = new Map(parseDiff(diff));
+	const untracked = git(root, [
+		"ls-files",
+		"--others",
+		"--exclude-standard",
+		"-z"
+	]);
+	for (const file of untracked.split("\0").filter(Boolean)) files.set(file, "all");
+	return {
+		root,
+		files,
+		computedAt
+	};
+}
+function repoChanges(dir, base, warn) {
+	let root = rootByDir.get(dir);
+	try {
+		if (root === void 0) {
+			root = realpathSync(git(dir, ["rev-parse", "--show-toplevel"]).trim());
+			rootByDir.set(dir, root);
+		}
+		if (root === null) return null;
+		const key = `${base ?? ""}\0${root}`;
+		const cached = changesByKey.get(key);
+		if (cached === null) return null;
+		if (cached !== void 0 && Date.now() - cached.computedAt <= MAX_AGE_MS) return cached;
+		try {
+			const changes = computeChanges(root, base);
+			changesByKey.set(key, changes);
+			return changes;
+		} catch (error) {
+			changesByKey.set(key, null);
+			throw error;
+		}
+	} catch (error) {
+		if (root === void 0) rootByDir.set(dir, null);
+		warn(`changed-lines mode could not diff ${dir}, checking every line: ${messageOf(error)}`);
+		return null;
+	}
+}
+/**
+* The lines of a file changed against the merge base of `HEAD` and `base` (default: see
+* `resolveBase`), computed once per repository per run. An empty set means the file is unchanged.
+* Untracked files, and every file before the first commit, count as entirely changed. When git
+* cannot answer, every line counts as changed and `warn` is told why, so a broken diff never
+* silently turns checks off.
+*/
+function changedLines(filename, base, warn) {
+	let file;
+	try {
+		file = realpathSync(filename);
+	} catch {
+		return "all";
+	}
+	const changes = repoChanges(path.dirname(file), base, warn);
+	if (changes === null || changes.files === null) return "all";
+	const relative = path.relative(changes.root, file).split(path.sep).join("/");
+	return changes.files.get(relative) ?? /* @__PURE__ */ new Set();
+}
+function overlaps(lines, start, end) {
+	if (lines === "all") return true;
+	for (let line = start; line <= end; line++) if (lines.has(line)) return true;
+	return false;
 }
 //#endregion
 //#region src/options.ts
@@ -312,6 +498,27 @@ const SCHEMA = {
 		}
 	}
 };
+const MODE_PROPERTIES = {
+	mode: { enum: ["all", "changed"] },
+	base: {
+		type: "string",
+		minLength: 1
+	}
+};
+/** `jev/ask` and `jev/suggest`: the shared options plus the rule's own mode. */
+const RULE_SCHEMA = {
+	...SCHEMA,
+	properties: {
+		...SCHEMA.properties,
+		...MODE_PROPERTIES
+	}
+};
+/** A `createJevPlugin` rule takes only its mode; everything else is set on the plugin. */
+const MODE_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	properties: MODE_PROPERTIES
+};
 function fail(message) {
 	throw new Error(`oxlint-plugin-jev: ${message}`);
 }
@@ -331,7 +538,7 @@ function checkOptions(raw) {
 	checkRules(options.rules);
 	return options;
 }
-const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord$1 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 function validate(value, schema, at) {
 	if (schema.enum && !schema.enum.includes(value)) fail(`${at} must be one of ${schema.enum.map((option) => JSON.stringify(option)).join(", ")}`);
 	switch (schema.type) {
@@ -350,7 +557,7 @@ function validate(value, schema, at) {
 			value.forEach((item, index) => validate(item, schema.items ?? {}, `${at}[${index}]`));
 			return;
 		case "object": {
-			if (!isRecord(value)) fail(`${at} must be an object`);
+			if (!isRecord$1(value)) fail(`${at} must be an object`);
 			const properties = schema.properties ?? {};
 			for (const key of schema.required ?? []) if (!Object.hasOwn(value, key)) fail(`${at}.${key} is required`);
 			for (const [key, field] of Object.entries(value)) {
@@ -364,7 +571,7 @@ function validate(value, schema, at) {
 	}
 }
 function checkPluginOptions(raw) {
-	if (!isRecord(raw)) fail("createJevPlugin options must be an object");
+	if (!isRecord$1(raw)) fail("createJevPlugin options must be an object");
 	const { name, ...rest } = raw;
 	if (typeof name !== "string" || name.trim() === "" || name.includes("/")) fail("createJevPlugin needs a plugin name without \"/\"");
 	validate(rest, {
@@ -450,14 +657,21 @@ function startPass(context, member) {
 		warnOnce(`missing-key:${chosen.reason}`, `${chosen.reason}, skipping Jev checks`);
 		return "skip";
 	}
-	const base = settingsBase(context.settings);
-	let changed;
+	const changedByBase = /* @__PURE__ */ new Map();
 	return {
 		filename: context.filename,
 		options,
 		backend: chosen.backend,
 		backendId: chosen.id,
-		changedLines: () => changed ??= changedLines(context.filename, base, (message) => warnOnce(`changed:${message}`, message)),
+		changedLines: (base) => {
+			const key = base ?? "";
+			let lines = changedByBase.get(key);
+			if (lines === void 0) {
+				lines = changedLines(context.filename, base, (message) => warnOnce(`changed:${message}`, message));
+				changedByBase.set(key, lines);
+			}
+			return lines;
+		},
 		matches: [],
 		dropped: 0,
 		outcome: null,
@@ -465,6 +679,24 @@ function startPass(context, member) {
 		deadline: 0,
 		refinementFailed: false,
 		failureRaised: false
+	};
+}
+const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+/**
+* The rule's own `mode` and `base` options. Every rule checks the whole file unless its options say
+* `mode: "changed"`; `JEV_MODE=all` turns `"changed"` off for a full run.
+*/
+function modeOf(context) {
+	const forced = (process.env.JEV_MODE ?? "").trim();
+	if (forced !== "" && forced !== "all") warnOnce(`mode-env:${forced}`, `JEV_MODE must be "all" or unset, not "${forced}"; ignoring it`);
+	const own = context.options[0];
+	if (forced === "all" || !isRecord(own) || own.mode !== "changed") return {
+		changed: false,
+		base: void 0
+	};
+	return {
+		changed: true,
+		base: typeof own.base === "string" ? own.base : void 0
 	};
 }
 function runBatch(pass, name, filename) {
@@ -560,7 +792,8 @@ function visitorsFor(group, member, context, nodeTypes) {
 		if (pass === null) return;
 		const rules = nodeTypeIndex(member.rules(pass.options)).get(type);
 		if (rules === void 0) return;
-		const lines = ruleMode(context.settings, context.id, "changed") === "changed" ? pass.changedLines() : "all";
+		const mode = modeOf(context);
+		const lines = mode.changed ? pass.changedLines(mode.base) : "all";
 		if (lines !== "all" && lines.size === 0) return;
 		for (const rule of rules) {
 			if (lines !== "all" && rule.target !== "file" && !overlaps(lines, node.loc.start.line, node.loc.end.line)) continue;
@@ -617,7 +850,7 @@ const ALL_NODE_TYPES = Object.values(TARGET_NODE_TYPES).flat().filter((type) => 
 const meta = {
 	type: "problem",
 	docs: { description: "Ask TypeSafe Jev a plain-English yes/no question about matched code and report when the yes-probability clears the rule's cutoff." },
-	schema: [SCHEMA],
+	schema: [RULE_SCHEMA],
 	defaultOptions: [DEFAULTS],
 	messages
 };
@@ -666,7 +899,7 @@ function createJevPlugin(options) {
 			meta: {
 				type: "problem",
 				docs: { description: rule.question },
-				schema: [],
+				schema: [MODE_SCHEMA],
 				messages
 			},
 			createOnce: (context) => visitorsFor(group, member, context, nodeTypes)

@@ -8,6 +8,7 @@ import { messageChainsRule } from "./rules/message-chains.ts";
 import { mutableDataRule } from "./rules/mutable-data.ts";
 import { mysteriousNameRule } from "./rules/mysterious-name.ts";
 import { repeatedSwitchesRule } from "./rules/repeated-switches.ts";
+import { withModes } from "../modes/wrap.ts";
 
 /**
  * Opt-in Oxlint rules named after the code smells in Martin Fowler's *Refactoring* (2nd ed.,
@@ -27,4 +28,5 @@ const antiSlopMartinFowlerPlugin = eslintCompatPlugin({
 	},
 });
 
-export default antiSlopMartinFowlerPlugin;
+/** Every rule also takes `mode` in its options; see `modes/wrap.ts`. */
+export default withModes(antiSlopMartinFowlerPlugin);

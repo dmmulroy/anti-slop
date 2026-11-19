@@ -1,3 +1,11 @@
+//#region src/changed.d.ts
+/**
+ * How a rule picks what to check, set in its own options. `"all"` (the default) checks every line;
+ * `"changed"` checks only lines that differ from the merge base of `HEAD` and the default branch,
+ * so matches on untouched lines are never sent.
+ */
+type Mode = 'all' | 'changed';
+//#endregion
 //#region src/types.d.ts
 type Target = 'function' | 'call' | 'jsx' | 'file';
 type CiBehavior = 'skip' | 'fail';
@@ -35,7 +43,14 @@ interface SharedOptions {
   /** Answer the questions with an LLM judge instead of Jev. */
   judge?: JudgeOptions;
 }
-interface JevOptions extends SharedOptions {
+/** Per-rule options: `jev/ask` and `jev/suggest` take them next to `rules`, `createJevPlugin` rules as their only option. */
+interface ModeOptions {
+  /** `"changed"` asks only about matches on lines changed since the merge base with the default branch. Default `"all"`. */
+  mode?: Mode;
+  /** The ref whose merge base with `HEAD` `"changed"` diffs against. Default: `JEV_CHANGED_BASE`, then the default branch. */
+  base?: string;
+}
+interface JevOptions extends SharedOptions, ModeOptions {
   rules: JevRule[];
 }
 interface JevPluginOptions extends SharedOptions {
@@ -107,4 +122,4 @@ interface JevRulesPlugin {
   rules: Record<string, object>;
 }
 //#endregion
-export { JevPlugin as a, JevRulesPlugin as c, JevOptions as i, JudgeOptions as l, AskResult as n, JevPluginOptions as o, CiBehavior as r, JevRule as s, AskInput as t, Target as u };
+export { JevPlugin as a, JevRulesPlugin as c, Target as d, Mode as f, JevOptions as i, JudgeOptions as l, AskResult as n, JevPluginOptions as o, CiBehavior as r, JevRule as s, AskInput as t, ModeOptions as u };

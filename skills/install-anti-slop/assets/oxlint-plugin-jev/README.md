@@ -39,7 +39,8 @@ Other variables:
 | ---------------------- | --------------------------------------------------------------------------------------------------- |
 | `TYPESAFE_BASE_URL`    | Another TypeSafe host, without `/v1`. `TYPESAFE_AI_BASE_URL` is the same with `/v1`; this one wins. |
 | `FACTORY_API_BASE_URL` | Another Factory host, such as `https://dev.api.factory.ai`. Defaults to `https://api.factory.ai`.   |
-| `JEV_CHANGED_BASE`     | The base ref for [changed lines](#changed-lines) when the `base` setting is not set.                |
+| `JEV_CHANGED_BASE`     | The base ref for [changed lines](#changed-lines) when a rule sets no `base`.                        |
+| `JEV_MODE`             | `all` checks every match, even for rules set to `mode: "changed"`. For full runs.                   |
 
 With no credential, the plugin warns once and reports nothing. Set `ci: "fail"` so CI fails instead.
 
@@ -153,19 +154,21 @@ Set next to `rules`, for `jev/ask`, `jev/suggest`, or `createJevPlugin`.
 
 ## Changed lines
 
-By default every rule only asks about matches on lines changed on the current branch: the working tree (commits on the branch, staged and unstaged edits, untracked files) diffed against the merge base of `HEAD` and the default branch. A match counts when any of its lines changed, a `file` rule matches any changed file, and an unchanged file sends no request. The default branch is what `refs/remotes/origin/HEAD` points at, else the first of `origin/main`, `origin/master`, `main`, and `master` that exists. If git can't produce a diff (not a repository, no default branch), the plugin warns and checks every line.
+Every rule asks about every match unless its own options say `"mode": "changed"`. A rule in `"changed"` mode only asks about matches on lines changed on the current branch: the working tree (commits on the branch, staged and unstaged edits, untracked files) diffed against the merge base of `HEAD` and the default branch. A match counts when any of its lines changed, a `file` rule matches any changed file, and an unchanged file sends no request for it. The default branch is what `refs/remotes/origin/HEAD` points at, else the first of `origin/main`, `origin/master`, `main`, and `master` that exists. If git can't produce a diff (not a repository, no default branch), the plugin warns and checks every line.
 
-Set a rule's mode to `"all"` to ask about every match, and pick another base ref, in oxlint `settings`. Modes are keyed by the full rule name (`jev/ask`, or `<name>/<id>` for `createJevPlugin` rules):
+Set `mode`, and optionally `base` (another ref to take the merge base with), next to `rules` for `jev/ask` and `jev/suggest`, or as the only option of a `createJevPlugin` rule:
 
 ```json
 {
-  "settings": {
-    "changedLines": { "rules": { "jev/ask": "all" }, "base": "origin/release" }
+  "rules": {
+    "jev/ask": ["error", { "mode": "changed", "rules": [] }],
+    "acme/no-pii-in-logs": ["error", { "mode": "changed", "base": "origin/release" }],
+    "acme/name-matches-behavior": "warn"
   }
 }
 ```
 
-`JEV_CHANGED_BASE` sets the base when `base` is not set. The same logic is exported from `oxlint-plugin-jev/changed` (`changedLines`, `ruleMode`, `defaultBase`, `overlaps`) for other plugins that read the same settings.
+`JEV_CHANGED_BASE` sets the base for rules that set no `base`. `JEV_MODE=all` checks every match regardless of `mode`, for a full run.
 
 ## Severity per question
 
@@ -242,7 +245,7 @@ export default createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 ## CI
 
-Check only what a pull request changed, and fail if the model can't be reached (`ci: "fail"` in the config):
+Fail if the model can't be reached (`ci: "fail"` in the config), and diff rules set to `mode: "changed"` against the pull request's base branch:
 
 ```yaml
 - run: npx oxlint -c .oxlintrc.ci.json

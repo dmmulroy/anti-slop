@@ -9,7 +9,7 @@ question about the change. Yes means the change violates the rule.
 | Kind | Looks at | Answered by | Runs in |
 | --- | --- | --- | --- |
 | AST rules (`anti-slop/*`, `anti-slop-effect/*`) | One syntax node at a time | Deterministic code in Oxlint | Editor, pre-commit, pre-push, CI |
-| Jev rules (`anti-slop-effect-jev/*`, `anti-slop-martinfowler-jev/*`, see [jev.md](jev.md)) | One function, call, or file | A decision model or LLM judge, one request per file per plugin | Pre-push and CI on changed lines; `modes/lint.ts full` on everything |
+| Jev rules (`anti-slop-effect-jev/*`, `anti-slop-martinfowler-jev/*`, see [jev.md](jev.md)) | One function, call, or file | A decision model or LLM judge, one request per file per plugin | Pre-push and CI, set to `mode: "changed"` where wanted; `modes/lint.ts full` on everything |
 | Diff rules (`diff-rules/run.ts`, this page) | The whole change: every touched file, the commits, and their history | A decision model, a chat model, or a CLI agent | CI on pull requests, optionally a pre-push hook |
 
 Use an AST rule whenever the pattern is syntactic, because it is free, exact, and instant. Use a
@@ -294,7 +294,7 @@ copy outside it.
 ```
 
 The recommended split ([docs/modes.md](./modes.md#hooks)) runs the free rules before committing,
-adds the Jev rules on changed lines before pushing, and adds the diff rules in CI. To also judge the
+adds the Jev rules before pushing (each in the mode its entry sets), and adds the diff rules in CI. To also judge the
 diff before pushing, add `node tools/oxlint/anti-slop/diff-rules/run.ts --committed` to the pre-push
 hook: `--committed` judges what is being pushed, without uncommitted edits. Only `error` rules
 block; add `--fail` to block on warnings too. A re-run on an unchanged branch is answered from the

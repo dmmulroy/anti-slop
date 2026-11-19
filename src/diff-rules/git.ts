@@ -48,7 +48,7 @@ export interface CollectOptions {
 
 /**
  * Remote default branch first, then fallbacks for clones without `origin/HEAD`: the same order as
- * the changed-lines mode of the oxlint rules (`oxlint-plugin-jev/changed`).
+ * the changed-lines mode of the oxlint rules (`modes/changed.ts`).
  */
 export const BASE_CANDIDATES: ReadonlyArray<string> = [
   "origin/HEAD",
