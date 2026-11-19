@@ -289,8 +289,8 @@ TypeScript, built with [Vite+](https://viteplus.dev). ESM only.
 npm run build
 npm run check   # format, lint, typecheck
 npm test        # builds first, since the worker tests run against dist/
-JEV_LIVE=1 TYPESAFE_API_KEY=... npm test   # also runs example/ against the real API
-JEV_LIVE=1 FACTORY_API_KEY=... npm test    # the same, through Factory's decision endpoint
+TYPESAFE_API_KEY=... npm test   # any credential from Backends also runs example/ against the real API
+FACTORY_API_KEY=... npm test    # the same, through Factory's decision endpoint
 ```
 
 ## License
