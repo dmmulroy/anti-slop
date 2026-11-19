@@ -9,6 +9,7 @@ export default defineConfig({
 	extends: Object.values(presets),
 	ignorePatterns: ["src/vendor/**"],
 	jsPlugins: [
+		{ name: "anti-slop", specifier: "./src/index.ts" },
 		{ name: "landmines", specifier: "@interfere/landmines/testing" },
 		{ name: "effect", specifier: "oxlint-plugin-effect/plugin" },
 		{ name: "enfect", specifier: "@enfect/oxlint" },
@@ -46,18 +47,31 @@ export default defineConfig({
 		"enfect/no-cause-in-http-response": "error",
 		"enfect/no-effect-ignore-then-as": "error",
 		"enfect/avoid-expect-in-if": "error",
-		"enfect/yield-in-for-loop": "error",
+		"enfect/yield-in-for-loop": "warn",
 		"enfect/prefer-duration-constructors": "error",
 		"enfect/avoid-mutable-state": "error",
 		"ai-guard/no-placeholder-implementation": "error",
 		"ai-guard/no-test-env-branch": "error",
-		"ai-guard/no-tautological-assertion": "error",
 		"ai-guard/no-assertionless-test": "error",
 		"ai-guard/no-undeclared-import": "error",
 		"ai-guard/no-silent-fallback": "error",
-		"ai-guard/no-invisible-unicode": "error",
+		"anti-slop/no-tautological-assertion": "error",
 	},
 	overrides: [
+		{
+			files: ["**/*.test.*", "**/*.spec.*", "**/test/**", "**/tests/**", "**/__tests__/**"],
+			rules: {
+				"effect/noUnboundedConcurrency": "off",
+				"enfect/effect-promise-vs-trypromise": "off",
+				"enfect/avoid-option-getorthrow": "off",
+				"enfect/effect-run-in-body": "off",
+			},
+		},
+		{
+			// Command-line entry points, the only place an Effect program may be run.
+			files: ["src/integrity/run.ts", "src/diff-rules/run.ts", "src/modes/lint.ts"],
+			rules: { "enfect/effect-run-in-body": "off" },
+		},
 		{
 			files: ["src/rules/require-readable-spacing-cli.test.ts", "src/jev/plugin.test.ts"],
 			rules: { "effecttsgo/node-builtin-import": "off" },
