@@ -201,27 +201,27 @@ need `"off"`.
 
 ### Enable the plugin
 
-Register `anti-slop-martinfowler-jev` and enable every smell at `"warn"` through
-`defineAntiSlopConfig` ([docs/modes.md](./modes.md)), which keeps the rules off unless
-`ANTI_SLOP_JEV=1` (so the editor never calls Jev) and asks only about changed lines. Turn them off
-for test files.
+Register `anti-slop-martinfowler-jev` and enable every smell at `"warn"`, and turn them off for test
+files. The rules run whenever a Jev credential is set. They ask about whole files unless an entry
+says `["warn", { mode: "changed" }]` ([docs/modes.md](./modes.md)).
 
 ```ts
 // oxlint.config.ts
 import { martinFowlerJevPluginName, martinFowlerJevRules } from "./tools/oxlint/anti-slop/martinfowler/jev-rules.ts";
-import { defineAntiSlopConfig } from "./tools/oxlint/anti-slop/modes/config.ts";
+import { defineConfig } from "oxlint";
 
 const severities = (severity: "error" | "warn" | "off") =>
   Object.fromEntries(martinFowlerJevRules.map((rule) => [`${martinFowlerJevPluginName}/${rule.id}`, severity]));
 
-export default defineAntiSlopConfig({
+export default defineConfig({
   jsPlugins: [
     { name: "anti-slop-martinfowler-jev", specifier: "./tools/oxlint/anti-slop/martinfowler/jev-plugin.ts" },
   ],
   rules: {
     ...severities("warn"),
-    // Per-smell severity, for example:
+    // Per-smell severity and mode, for example:
     // "anti-slop-martinfowler-jev/comments": "off",
+    // "anti-slop-martinfowler-jev/feature-envy": ["warn", { mode: "changed" }],
   },
   overrides: [{ files: ["**/*.test.*", "**/*.spec.*", "test/**", "tests/**"], rules: severities("off") }],
 });

@@ -1,11 +1,21 @@
 # Rule modes, hooks, and CI
 
-Each rule in the Oxlint config says how much code it checks:
+Every rule checks the whole file. A rule checks only changed lines when its own options say so,
+using Oxlint's normal rule syntax:
 
-- `"all"` checks every line. This is the default for deterministic rules.
-- `"changed"` checks only lines changed on the branch and ignores findings on untouched lines. This
-  is the default for Jev rules, where every match is a paid request. On a deterministic rule it is a
-  ratchet: new code must pass, and old violations are left alone until someone edits those lines.
+```ts
+"anti-slop/no-object-parameters": "error", // the whole file
+"anti-slop/no-reflect-get": ["error", { mode: "changed" }], // only lines changed on the branch
+"anti-slop/max-ternary-depth": ["error", { mode: "changed", maxDepth: 2 }], // with the rule's own options
+```
+
+- `"all"` (the default, and what a bare severity means) checks every line.
+- `"changed"` reports only findings on lines changed on the branch. On a deterministic rule this is
+  a ratchet: new code must pass, and old violations stay until someone edits those lines. On a Jev
+  rule it also saves money: matches on unchanged lines are never sent.
+
+Nothing switches a rule's mode implicitly. Jev rules check whole files too unless they say
+`mode: "changed"`.
 
 Changed lines are the working tree (commits on the branch, staged and unstaged edits, untracked
 files) diffed against the merge base of `HEAD` and the default branch. The default branch is what
@@ -14,65 +24,70 @@ files) diffed against the merge base of `HEAD` and the default branch. The defau
 (not a repository, no default branch, no common ancestor), every line is checked and a warning says
 why. The diff rules use the same default base.
 
-## Configure
+## Which rules take a mode
 
-Wrap the config in `defineAntiSlopConfig` and set a mode next to a rule's severity:
+| Rules | How |
+| --- | --- |
+| `anti-slop/*`, `anti-slop-effect/*`, `anti-slop-xstate/*`, `anti-slop-martinfowler/*` | Built in: every rule's options accept `mode` and `base`. |
+| `anti-slop-effect-jev/*`, `anti-slop-martinfowler-jev/*`, `createJevPlugin` rules, `jev/ask` | Built into the `oxlint-plugin-jev` fork. |
+| `landmines/*`, `effect/*` (cevr), `enfect/*` | Register anti-slop's checked-in wrapper modules instead of the package (below). |
+| Built-in Oxlint rules (`eslint`, `typescript`, `oxc`, `unicorn`, ...) and `effecttsgo/*` | Cannot take a mode; they always check every line. Do not put `mode` in their options. |
+
+The wrappers in `plugins/` import the real plugin and re-export every rule with a schema that also
+accepts `mode` and `base`. The rule never sees those two options, so its own options pass through
+unchanged, and in `"changed"` mode its reports on unchanged lines are dropped. Register a wrapper
+under the plugin's usual name, so rule names and disable comments stay the same:
 
 ```ts
 // oxlint.config.ts
-import { defineAntiSlopConfig } from "./tools/oxlint/anti-slop/modes/config.ts";
+import { defineConfig } from "oxlint";
 
-export default defineAntiSlopConfig({
+export default defineConfig({
   jsPlugins: [
     { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
-    { name: "landmines", specifier: "@interfere/landmines/testing" },
+    { name: "landmines", specifier: "./tools/oxlint/anti-slop/plugins/landmines.ts" },
+    { name: "effect", specifier: "./tools/oxlint/anti-slop/plugins/effect.ts" },
+    { name: "enfect", specifier: "./tools/oxlint/anti-slop/plugins/enfect.ts" },
     { name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" },
-    { name: "anti-slop-martinfowler-jev", specifier: "./tools/oxlint/anti-slop/martinfowler/jev-plugin.ts" },
   ],
   rules: {
-    "typescript/no-non-null-assertion": "error", // built-in: always "all"
-    "landmines/no-fixed-sleep": "error", // "all"
-    "anti-slop/no-object-parameters": { level: "error", mode: "changed" }, // ratchet
-    "anti-slop/max-ternary-depth": { level: "error", options: [{ maxDepth: 2 }] },
-    "anti-slop-effect-jev/unbounded-retry": "error", // Jev: "changed"
-    "anti-slop-martinfowler-jev/middle-man": { level: "warn", mode: "all" },
+    "typescript/no-non-null-assertion": "error", // built-in: always the whole file
+    "landmines/no-fixed-sleep": "error",
+    "landmines/no-flake-masking": ["error", { mode: "changed" }],
+    "effect/noUnboundedConcurrency": ["error", { mode: "changed" }],
+    "anti-slop/no-object-parameters": ["error", { mode: "changed" }],
+    "anti-slop-effect-jev/unbounded-retry": ["error", { mode: "changed" }],
   },
 });
 ```
 
-A rule entry is a severity, Oxlint's `[severity, ...options]`, or `{ level, mode, options }`. Only
-the rules the config enables run; a mode never enables a rule. Overrides take the same entries, but
-a rule has one mode everywhere. Jev plugins are recognized by name: `jev`, or a name ending in
-`-jev`.
+The same entries work in `.oxlintrc.json` and under `lint` in a Vite+ config. Each wrapper imports
+only its own package, so copy or register only the wrappers for plugins you install. A rule whose
+first option is not an object, or that already has its own `mode` or `base` option, is left as it
+is.
 
-The helper returns a standard Oxlint config:
+### Options and environment
 
-- Each enabled rule's mode goes to `settings.changedLines`, which the Jev plugins and the wrapped
-  plugins below read.
-- A JS plugin with a rule in `"changed"` mode is registered as a wrapped copy under the same name,
-  so rule names and disable comments do not change. The copy calls each original rule with a
-  context whose `report` drops findings that touch no changed line. It is a generated module in
-  `node_modules/.cache/anti-slop/plugins/` and needs the `oxlint-plugin-jev` package installed,
-  which provides the changed-lines module.
-- Built-in Oxlint rules (`eslint`, `typescript`, `oxc`, `unicorn`, and the rest) and `effecttsgo/*`
-  run natively and cannot be wrapped, so `"changed"` on one of them is a config error. So is
-  `"changed"` on a rule whose plugin is registered by a bare specifier string instead of
-  `{ name, specifier }`.
-- Jev rules are turned off unless `ANTI_SLOP_JEV=1`, so the editor and plain `oxlint` runs never make
-  paid requests. Without credentials, Jev warns and skips, except under `CI`.
-
-| Variable | Effect |
+| Setting | Effect |
 | --- | --- |
-| `ANTI_SLOP_JEV=1` | Runs the Jev rules. |
-| `ANTI_SLOP_MODE=all` | Every rule checks every line, for full runs. |
-| `ANTI_SLOP_BASE=<ref>` | Diffs against the merge base with this ref instead of the default branch. The `base` option of `defineAntiSlopConfig` does the same. The diff rules read it too. |
+| `mode: "changed"` | Only changed lines, for that rule. |
+| `base: "<ref>"` | Next to `mode`: diff against the merge base with this ref instead of the default branch. |
+| `ANTI_SLOP_BASE=<ref>` | The base for anti-slop's rules and the wrapped plugins when a rule sets no `base`. The diff rules read it too. |
+| `JEV_CHANGED_BASE=<ref>` | The same for the Jev rules. `modes/lint.ts` copies `ANTI_SLOP_BASE` into it when it is unset. |
+| `ANTI_SLOP_MODE=all`, `JEV_MODE=all` | Every rule checks every line, whatever its `mode`, for full runs. `modes/lint.ts full` sets both. |
 
-Relative `jsPlugins` specifiers resolve from the config file's directory; pass
-`{ root: import.meta.dirname }` as the second argument if the helper cannot find it.
+## Jev rules and credentials
+
+Jev rules run when a decision-model credential is set (`TYPESAFE_API_KEY` or `TYPESAFE_AI_API_KEY`,
+`FACTORY_API_KEY`, or `AI_GATEWAY_API_KEY`, with their base URL variables), and otherwise warn once
+and skip. Under `CI`, the anti-slop Jev plugins fail instead (`ci: "fail"`). The Oxlint editor
+extension inherits the editor's environment, so if a credential is set there it asks Jev on every
+edit; keep the key out of the editor's environment, or point the editor at a config without the Jev
+plugins.
 
 ## Hooks
 
-`modes/lint.ts` runs the lint with the right environment for each stage:
+`modes/lint.ts` runs the lint for each stage:
 
 ```text
 node tools/oxlint/anti-slop/modes/lint.ts <commit|push|full> [command...]
@@ -80,11 +95,13 @@ node tools/oxlint/anti-slop/modes/lint.ts <commit|push|full> [command...]
 
 | Stage | Runs |
 | --- | --- |
-| `commit` | The free rules on the staged JS and TS files (`ANTI_SLOP_JEV=0`). |
-| `push` | The free rules and the Jev rules on the whole project, each in its mode (`ANTI_SLOP_JEV=1`). |
-| `full` | Like `push`, with `ANTI_SLOP_MODE=all`. |
+| `commit` | The staged JS and TS files, with the Jev credentials (and `CI`) removed from the environment, so only the free rules run and Jev prints its "no Jev credentials" warning. |
+| `push` | The whole project as configured: every rule in the mode its options set, plus the Jev rules when a credential is set. |
+| `full` | Like `push`, with `ANTI_SLOP_MODE=all` and `JEV_MODE=all`. |
 
-The command defaults to `oxlint`. Effect repositories pass their wrapper, for example
+Set `mode: "changed"` in the config on the rules you want limited to the branch's changes before
+pushing, typically the Jev rules and any deterministic rule the codebase does not pass yet. The
+command defaults to `oxlint`. Effect repositories pass their wrapper, for example
 `node tools/oxlint/anti-slop/modes/lint.ts push effect-tsgo --tsrs-lint oxlint --type-check`.
 
 - Pre-commit: `node tools/oxlint/anti-slop/modes/lint.ts commit`

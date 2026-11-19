@@ -6,6 +6,7 @@ import { noMultipleXStateHooksRule } from "./rules/no-multiple-xstate-hooks.ts";
 import { noSingleUseXStateActionsRule } from "./rules/no-single-use-xstate-actions.ts";
 import { noSingleUseXStateGuardsRule } from "./rules/no-single-use-xstate-guards.ts";
 import { requireXStateEventSatisfiesRule } from "./rules/require-xstate-event-satisfies.ts";
+import { withModes } from "../modes/wrap.ts";
 
 /** Opt-in Oxlint rules for repositories that build state machines with XState 5. */
 const antiSlopXStatePlugin = eslintCompatPlugin({
@@ -20,4 +21,5 @@ const antiSlopXStatePlugin = eslintCompatPlugin({
 	},
 });
 
-export default antiSlopXStatePlugin;
+/** Every rule also takes `mode` in its options; see `modes/wrap.ts`. */
+export default withModes(antiSlopXStatePlugin);

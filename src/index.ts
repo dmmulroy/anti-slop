@@ -21,6 +21,7 @@ import { noUnsafeDictionaryTypeRule } from "./rules/no-unsafe-dictionary-type.ts
 import { noWidenThenAssertRule } from "./rules/no-widen-then-assert.ts";
 import { requireReadableSpacingRule } from "./rules/require-readable-spacing.ts";
 import { requireSafetyCommentForTypeAssertionRule } from "./rules/require-safety-comment-for-type-assertion.ts";
+import { withModes } from "./modes/wrap.ts";
 
 /** Generic Oxlint rules that reject low-evidence and low-signal implementation patterns. */
 const antiSlopPlugin = eslintCompatPlugin({
@@ -50,4 +51,5 @@ const antiSlopPlugin = eslintCompatPlugin({
 	},
 });
 
-export default antiSlopPlugin;
+/** Every rule also takes `mode` in its options; see `modes/wrap.ts`. */
+export default withModes(antiSlopPlugin);

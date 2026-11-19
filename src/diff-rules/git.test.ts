@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_EXCLUDES } from "./config.ts";
-import { DEFAULT_BRANCHES } from "oxlint-plugin-jev/changed";
+import { DEFAULT_BRANCHES } from "../modes/changed.ts";
 import { BASE_CANDIDATES, collectChanges, historySummary, type ChangeSet } from "./git.ts";
 
 // Keep the developer's git configuration out of the scratch repositories.

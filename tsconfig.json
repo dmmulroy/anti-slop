@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
-    "plugins": [{ "name": "@effect/language-service", "diagnostics": false }]
+    "plugins": [{ "name": "@effect/language-service", "diagnostics": false, "allowedDuplicatedPackages": ["effect"] }]
   },
   "include": ["src/**/*.ts"]
 }

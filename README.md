@@ -70,21 +70,22 @@ Keep `src/vendor/eslint-stylistic/LICENSE` and `UPSTREAM.md` with the copy, beca
 
 ## Configure
 
-The following `oxlint.config.ts` enables the core rules, the landmines testing rules, the Effect rules, and the Fowler bundle. The same `ignorePatterns`, `jsPlugins`, and `rules` work in `.oxlintrc.json` or under `lint` in a Vite+ config, without rule modes.
+The following `oxlint.config.ts` enables the core rules, the landmines testing rules, the Effect rules, and the Fowler bundle. The same `ignorePatterns`, `jsPlugins`, and `rules` work in `.oxlintrc.json` or under `lint` in a Vite+ config.
 
 ```ts
-import { defineAntiSlopConfig } from "./tools/oxlint/anti-slop/modes/config.ts";
+import { defineConfig } from "oxlint";
 
-export default defineAntiSlopConfig({
+export default defineConfig({
   // Do not lint the vendored plugin or installed agent assets. Add any other agent directories you use.
   ignorePatterns: [".agents/**", ".claude/**", ".cursor/**", "tools/oxlint/**"],
   jsPlugins: [
     { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
     { name: "anti-slop-effect", specifier: "./tools/oxlint/anti-slop/effect/index.ts" }, // Effect repositories only
     { name: "anti-slop-martinfowler", specifier: "./tools/oxlint/anti-slop/martinfowler/index.ts" },
-    { name: "landmines", specifier: "@interfere/landmines/testing" },
-    { name: "enfect", specifier: "@enfect/oxlint" }, // Effect repositories only
-    { name: "effect", specifier: "oxlint-plugin-effect/plugin" }, // Effect 4.1 or later only
+    // Wrappers around @interfere/landmines/testing, @enfect/oxlint, and oxlint-plugin-effect/plugin that add a `mode` option.
+    { name: "landmines", specifier: "./tools/oxlint/anti-slop/plugins/landmines.ts" },
+    { name: "enfect", specifier: "./tools/oxlint/anti-slop/plugins/enfect.ts" }, // Effect repositories only
+    { name: "effect", specifier: "./tools/oxlint/anti-slop/plugins/effect.ts" }, // Effect 4.1 or later only
     { name: "anti-slop-xstate", specifier: "./tools/oxlint/anti-slop/xstate/index.ts" }, // xstate repositories only
   ],
   rules: {
@@ -99,7 +100,7 @@ export default defineAntiSlopConfig({
     "anti-slop/no-known-value-widening": "error",
     "anti-slop/no-module-mocking": "error",
     // Only lines changed on the branch: a ratchet for a rule the codebase does not pass yet.
-    "anti-slop/no-object-parameters": { level: "error", mode: "changed" },
+    "anti-slop/no-object-parameters": ["error", { mode: "changed" }],
     "anti-slop/no-reduce-accumulator-copy": "error",
     "anti-slop/no-reflect-apply": "error",
     "anti-slop/no-reflect-get": "error",
@@ -183,7 +184,7 @@ export default defineAntiSlopConfig({
 });
 ```
 
-Each rule checks the whole file by default. `{ level, mode: "changed" }` checks only lines changed on the branch (against the merge base with the default branch), which ignores old violations and checks new code; Jev rules default to that mode. `defineAntiSlopConfig` turns the modes into a standard Oxlint config. Built-in Oxlint rules and `effecttsgo/*` always check every line. [docs/modes.md](docs/modes.md) covers modes, the pre-commit and pre-push hooks, and CI.
+Every rule checks the whole file. `["error", { mode: "changed" }]` checks only lines changed on the branch (against the merge base with the default branch), which ignores old violations and checks new code. Nothing defaults to `"changed"`, Jev rules included. anti-slop's own rules and the Jev rules accept `mode` directly; the `plugins/` wrappers add it to the landmines, cevr `effect`, and `enfect` rules. Built-in Oxlint rules and `effecttsgo/*` cannot take a mode and always check every line. [docs/modes.md](docs/modes.md) covers modes, the pre-commit and pre-push hooks, and CI.
 
 Effect repositories should also run every `@effect/tsgo` diagnostic as an error. Those diagnostics are type-aware and run on the Effect-patched tsrs through `effect-tsgo --tsrs-lint oxlint`, which this repository's `lint` script uses with `--type-check` so the same tsrs pass also typechecks, with no `tsc`; tsrs mode is experimental, and the skill falls back to `oxlint-tsgolint` when it fails. The skill sets this up, and [`oxlint.config.ts`](oxlint.config.ts) in this repository shows the configuration.
 
@@ -241,11 +242,11 @@ node <skill-directory>/scripts/install.mjs --jev
 npm install --save-dev ./tools/oxlint/oxlint-plugin-jev   # brings ai, @ai-sdk/typesafe-ai, zod, synckit
 ```
 
-Register both plugins and enable their questions in the same `oxlint.config.ts`, choosing a severity for each one. A rule set to `"off"` sends nothing. `defineAntiSlopConfig` keeps the Jev rules off unless `ANTI_SLOP_JEV=1`, so the editor and plain `oxlint` runs never send a request, and asks only about changed lines unless a rule says `mode: "all"`:
+Register both plugins and enable their questions in the same `oxlint.config.ts`, choosing a severity for each one. A rule set to `"off"` sends nothing. The rules run whenever a decision-model credential is set and skip with a warning otherwise. Like every rule they check whole files; add `{ mode: "changed" }` to ask only about the branch's changes:
 
 ```ts
 // oxlint.config.ts
-export default defineAntiSlopConfig({
+export default defineConfig({
   jsPlugins: [
     // ...the plugins above
     { name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" },
@@ -253,13 +254,13 @@ export default defineAntiSlopConfig({
   ],
   rules: {
     // ...the rules above
-    "anti-slop-effect-jev/error-as-value": "error",
+    "anti-slop-effect-jev/error-as-value": ["error", { mode: "changed" }],
     "anti-slop-effect-jev/shallow-service": "error",
     "anti-slop-effect-jev/swallow-without-capture": "error",
     "anti-slop-effect-jev/read-then-write-race": "warn",
     "anti-slop-effect-jev/cache-in-method": "off",
     "anti-slop-martinfowler-jev/feature-envy": "warn",
-    "anti-slop-martinfowler-jev/primitive-obsession": { level: "warn", mode: "all" },
+    "anti-slop-martinfowler-jev/primitive-obsession": "warn",
     "anti-slop-martinfowler-jev/comments": "off",
   },
   overrides: [
@@ -277,7 +278,7 @@ export default defineAntiSlopConfig({
 ```
 
 Run them with the pre-push and CI command, `node tools/oxlint/anti-slop/modes/lint.ts push` ([docs/modes.md](docs/modes.md)).
-Without credentials, Jev prints a warning and skips its checks. Under `CI`, both plugins fail instead, because they set `ci: "fail"`. [docs/jev.md](docs/jev.md) covers judge mode, combining both plugins into one request per file, CI, and tuning. [docs/martinfowler.md](docs/martinfowler.md) covers the smells.
+Without credentials, Jev prints a warning and skips its checks. Under `CI`, both plugins fail instead, because they set `ci: "fail"`. The editor extension calls Jev too when a credential is in the editor's environment, so keep it out of there. [docs/jev.md](docs/jev.md) covers judge mode, combining both plugins into one request per file, CI, and tuning. [docs/martinfowler.md](docs/martinfowler.md) covers the smells.
 
 ## Diff rules
 
