@@ -193,7 +193,7 @@ export default defineConfig({
   },
   overrides: [
     {
-      // Tests throw inside Effect generators, run Effects, fan out fixtures, and pass nullable fixtures on purpose.
+      // Tests throw inside Effect generators, run Effects, and fan out fixtures on purpose.
       files: ["**/*.test.*", "**/*.spec.*", "**/test/**", "**/tests/**", "**/__tests__/**"],
       rules: {
         "anti-slop-effect/throw-in-effect-gen": "off",
@@ -201,7 +201,6 @@ export default defineConfig({
         "enfect/effect-promise-vs-trypromise": "off",
         "enfect/avoid-option-getorthrow": "off",
         "enfect/effect-run-in-body": "off",
-        "enfect/prefer-option-over-null": "off",
       },
     },
     {
@@ -439,7 +438,7 @@ These eleven rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enf
 | `yield-in-for-loop` | `yield*` inside a `for` loop instead of `Effect.forEach` with an explicit concurrency. Warns. |
 | `prefer-duration-constructors` | A raw number of milliseconds passed to `Effect.sleep`, `Effect.delay`, `Effect.timeout*`, `Schedule.spaced`, `Schedule.fixed`, `Schedule.windowed`, or `Schedule.duration`, or as a `duration` option, instead of a `Duration` constructor. |
 | `avoid-mutable-state` | `let` bindings inside `Layer.effect`, `Layer.succeed`, or a `Context.Service` `make`, which hide fiber-visible state. Use `Ref`, `SynchronizedRef`, or `Effect.cached`. |
-| `prefer-option-over-null` | Every `T \| null`, `T \| undefined`, or `T \| null \| undefined` union written in a type position: annotations, parameters, return types, aliases, interface members, casts, and type arguments such as `Promise<User \| null>`. Optional properties and parameters (`name?: string`), inferred types, and `T \| void` are not reported, and there is no exemption for JSON, DOM, or third-party boundary types. Use `Option<T>`. Off for tests. |
+| `prefer-option-over-null` | Every `T \| null`, `T \| undefined`, or `T \| null \| undefined` union written in a type position: annotations, parameters, return types, aliases, interface members, casts, and type arguments such as `Promise<User \| null>`. Optional properties and parameters (`name?: string`), inferred types, and `T \| void` are not reported, and there is no exemption for JSON, DOM, or third-party boundary types. Use `Option<T>`. On in tests too. |
 
 ### Effect (`anti-slop-effect`, error)
 
