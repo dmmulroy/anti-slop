@@ -5,6 +5,7 @@ import { noArrayFilterMapRule } from "./rules/no-array-filter-map.ts";
 import { noReduceAccumulatorCopyRule } from "./rules/no-reduce-accumulator-copy.ts";
 import { noChainedTypeAssertionsRule } from "./rules/no-chained-type-assertions.ts";
 import { noConditionalSpreadRule } from "./rules/no-conditional-spread.ts";
+import { noDevEnvBranchRule } from "./rules/no-dev-env-branch.ts";
 import { noDisabledTypeAssertionRulesRule } from "./rules/no-disabled-type-assertion-rules.ts";
 import { noKnownValueWideningRule } from "./rules/no-known-value-widening.ts";
 import { noModuleMockingRule } from "./rules/no-module-mocking.ts";
@@ -32,6 +33,7 @@ const antiSlopPlugin = eslintCompatPlugin({
 		"no-reduce-accumulator-copy": noReduceAccumulatorCopyRule,
 		"no-chained-type-assertions": noChainedTypeAssertionsRule,
 		"no-conditional-spread": noConditionalSpreadRule,
+		"no-dev-env-branch": noDevEnvBranchRule,
 		"no-disabled-type-assertion-rules": noDisabledTypeAssertionRulesRule,
 		"no-known-value-widening": noKnownValueWideningRule,
 		"no-module-mocking": noModuleMockingRule,

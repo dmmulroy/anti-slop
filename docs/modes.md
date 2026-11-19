@@ -30,7 +30,7 @@ why. The diff rules use the same default base.
 | --- | --- |
 | `anti-slop/*`, `anti-slop-effect/*`, `anti-slop-xstate/*`, `anti-slop-martinfowler/*` | Built in: every rule's options accept `mode` and `base`. |
 | `anti-slop-effect-jev/*`, `anti-slop-martinfowler-jev/*`, `createJevPlugin` rules, `jev/ask` | Built into the `oxlint-plugin-jev` fork. |
-| `landmines/*`, `effect/*` (cevr), `enfect/*` | Register anti-slop's checked-in wrapper modules instead of the package (below). |
+| `landmines/*`, `ai-guard/*`, `effect/*` (cevr), `enfect/*` | Register anti-slop's checked-in wrapper modules instead of the package (below). |
 | Built-in Oxlint rules (`eslint`, `typescript`, `oxc`, `unicorn`, ...) and `effecttsgo/*` | Cannot take a mode; they always check every line. Do not put `mode` in their options. |
 
 The wrappers in `plugins/` import the real plugin and re-export every rule with a schema that also
@@ -46,6 +46,7 @@ export default defineConfig({
   jsPlugins: [
     { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
     { name: "landmines", specifier: "./tools/oxlint/anti-slop/plugins/landmines.ts" },
+    { name: "ai-guard", specifier: "./tools/oxlint/anti-slop/plugins/ai-guard.ts" },
     { name: "effect", specifier: "./tools/oxlint/anti-slop/plugins/effect.ts" },
     { name: "enfect", specifier: "./tools/oxlint/anti-slop/plugins/enfect.ts" },
     { name: "anti-slop-effect-jev", specifier: "./tools/oxlint/anti-slop/jev/plugin.ts" },
@@ -105,15 +106,25 @@ command defaults to `oxlint`. Effect repositories pass their wrapper, for exampl
 `node tools/oxlint/anti-slop/modes/lint.ts push effect-tsgo --tsrs-lint oxlint --type-check`.
 
 - Pre-commit: `node tools/oxlint/anti-slop/modes/lint.ts commit`
-- Pre-push: `node tools/oxlint/anti-slop/modes/lint.ts push`
-- CI: the pre-push command, then the [diff rules](./diff-rules.md).
+- Pre-push: `node tools/oxlint/anti-slop/modes/lint.ts push`, then `npm run integrity`
+- CI: the pre-push commands, then the [diff rules](./diff-rules.md).
+
+`integrity` is the `"integrity": "node tools/oxlint/anti-slop/integrity/run.ts"` script. It fails when the
+branch weakens its own checks: `ai-guard integrity --enforce` (skipped or deleted tests, new suppressions,
+weakened ESLint, TypeScript, coverage, script, CI, and hook settings) plus anti-slop's checks for disable
+comments without a ` -- reason` and oxlint config changes that lower or remove rules, add `ignorePatterns`, or
+remove `jsPlugins`. It diffs against the same base as `"changed"` mode and honors `ANTI_SLOP_BASE`. It needs
+`eslint-plugin-ai-guard` and `@typescript-eslint/parser` and no network or credentials. Use the package
+manager the repository uses (`pnpm integrity`, `yarn integrity`).
 
 Add them with the hook tool the repository already uses:
 
 ```sh
-# husky: .husky/pre-commit and .husky/pre-push
+# husky: .husky/pre-commit
 node tools/oxlint/anti-slop/modes/lint.ts commit
+# husky: .husky/pre-push
 node tools/oxlint/anti-slop/modes/lint.ts push
+npm run integrity
 ```
 
 ```yaml
@@ -123,16 +134,21 @@ pre-commit:
     anti-slop:
       run: node tools/oxlint/anti-slop/modes/lint.ts commit
 pre-push:
+  piped: true
   commands:
     anti-slop:
+      priority: 1
       run: node tools/oxlint/anti-slop/modes/lint.ts push
+    integrity:
+      priority: 2
+      run: npm run integrity
 ```
 
 ```json
 {
   "simple-git-hooks": {
     "pre-commit": "node tools/oxlint/anti-slop/modes/lint.ts commit",
-    "pre-push": "node tools/oxlint/anti-slop/modes/lint.ts push"
+    "pre-push": "node tools/oxlint/anti-slop/modes/lint.ts push && npm run integrity"
   }
 }
 ```
@@ -169,6 +185,7 @@ jobs:
           key: anti-slop-${{ github.head_ref }}-${{ github.sha }}
           restore-keys: anti-slop-${{ github.head_ref }}-
       - run: node tools/oxlint/anti-slop/modes/lint.ts push
+      - run: npm run integrity
       - run: node tools/oxlint/anti-slop/diff-rules/run.ts --committed --purpose "$PR_TITLE"
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}

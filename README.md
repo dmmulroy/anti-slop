@@ -13,7 +13,9 @@ anti-slop was created by [Dillon Mulroy](https://github.com/dmmulroy) at [dmmulr
 - Diff rules that judge a whole change set, for smells such as shotgun surgery and scope creep.
 - Four test-honesty rules from [interfere-inc/landmines](https://github.com/interfere-inc/landmines) (MIT), installed from npm as `@interfere/landmines`: `strict-msw`, `no-fixed-sleep`, `no-unsignaled-poll`, and `no-flake-masking`.
 - Ten Effect runtime rules from [cevr/effect-oxlint](https://github.com/cevr/effect-oxlint) (MIT), installed from npm as `oxlint-plugin-effect` in repositories on Effect 4.1 or later, such as `noSilentCatchAll`, `noUnboundedConcurrency`, and `requireForceKillAfter`.
-- Eight Effect rules from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) (MIT), installed from npm as `@enfect/oxlint` in Effect repositories, such as `effect-promise-vs-trypromise`, `prefer-redacted-config`, and `no-cause-in-http-response`.
+- Ten Effect rules from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) (MIT), installed from npm as `@enfect/oxlint` in Effect repositories, such as `effect-promise-vs-trypromise`, `prefer-redacted-config`, and `avoid-mutable-state`, and `anti-slop-effect/stream-large-files`, ported from enfect's `stream-large-files` pattern.
+- Seven AI-shortcut rules from [ai-guard-dev/eslint-plugin-ai-guard](https://github.com/ai-guard-dev/eslint-plugin-ai-guard) (MIT), installed from npm as `eslint-plugin-ai-guard`, such as `no-placeholder-implementation`, `no-test-env-branch`, and `no-undeclared-import`, and `anti-slop/no-dev-env-branch`, a development-mode variant of `no-test-env-branch`.
+- An `integrity` script that fails a branch that weakens its own checks: it runs `ai-guard integrity` and adds checks for oxlint disable comments without a reason and weakened oxlint configs.
 
 See [Jev rules](#jev-rules-llm-judged) and the [rule catalog](#jev-and-diff-rules).
 
@@ -32,11 +34,11 @@ npx skills add K-Mistele/anti-slop --skill install-anti-slop
 Then ask your coding agent to install anti-slop. The skill does the following:
 
 - runs `scripts/install.mjs`, which copies the plugin to `tools/oxlint/anti-slop/`;
-- installs `oxlint` and `@oxlint/plugins` at matching versions, and `@interfere/landmines`;
-- merges the plugin into your existing Oxlint or Vite+ config, with every core rule and the four landmines testing rules enabled;
-- enables the Effect rules, the `@effect/tsgo` diagnostics, and the eight `@enfect/oxlint` rules when `effect` is a direct dependency, plus the ten cevr/effect-oxlint rules from `oxlint-plugin-effect` on Effect 4.1 or later;
+- installs `oxlint` and `@oxlint/plugins` at matching versions, `@interfere/landmines`, `eslint-plugin-ai-guard`, and `@typescript-eslint/parser`;
+- merges the plugin into your existing Oxlint or Vite+ config, with every core rule, the four landmines testing rules, and the seven ai-guard rules enabled;
+- enables the Effect rules, the `@effect/tsgo` diagnostics, and the ten `@enfect/oxlint` rules when `effect` is a direct dependency, plus the ten cevr/effect-oxlint rules from `oxlint-plugin-effect` on Effect 4.1 or later;
 - enables the XState rules when `xstate` is a direct dependency;
-- adds a pre-commit hook (free rules on staged files) and a pre-push hook (free rules plus Jev rules on changed lines) with your existing hook tool;
+- adds an `integrity` script, a pre-commit hook (free rules on staged files), and a pre-push hook (free rules plus Jev rules on changed lines, then `integrity`) with your existing hook tool;
 - runs your lint and typecheck.
 
 The Jev rules and diff rules make paid model requests, so the skill sets them up only when you ask.
@@ -60,6 +62,7 @@ The script refuses to overwrite an existing directory. `--force` overrides that 
 git clone --depth 1 https://github.com/K-Mistele/anti-slop /tmp/anti-slop
 mkdir -p tools/oxlint && cp -R /tmp/anti-slop/src tools/oxlint/anti-slop
 npm install --save-dev --save-exact oxlint@1.93.0 @oxlint/plugins@1.93.0 @interfere/landmines@0.1.0
+npm install --save-dev --save-exact eslint-plugin-ai-guard@1.4.7 @typescript-eslint/parser@8.73.0
 npm install --save-dev --save-exact @enfect/oxlint@0.10.0 # Effect repositories only
 npm install --save-dev --save-exact oxlint-plugin-effect@0.32.4 # Effect 4.1 or later only
 ```
@@ -82,8 +85,9 @@ export default defineConfig({
     { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
     { name: "anti-slop-effect", specifier: "./tools/oxlint/anti-slop/effect/index.ts" }, // Effect repositories only
     { name: "anti-slop-martinfowler", specifier: "./tools/oxlint/anti-slop/martinfowler/index.ts" },
-    // Wrappers around @interfere/landmines/testing, @enfect/oxlint, and oxlint-plugin-effect/plugin that add a `mode` option.
+    // Wrappers around @interfere/landmines/testing, eslint-plugin-ai-guard, @enfect/oxlint, and oxlint-plugin-effect/plugin that add a `mode` option.
     { name: "landmines", specifier: "./tools/oxlint/anti-slop/plugins/landmines.ts" },
+    { name: "ai-guard", specifier: "./tools/oxlint/anti-slop/plugins/ai-guard.ts" },
     { name: "enfect", specifier: "./tools/oxlint/anti-slop/plugins/enfect.ts" }, // Effect repositories only
     { name: "effect", specifier: "./tools/oxlint/anti-slop/plugins/effect.ts" }, // Effect 4.1 or later only
     { name: "anti-slop-xstate", specifier: "./tools/oxlint/anti-slop/xstate/index.ts" }, // xstate repositories only
@@ -96,6 +100,7 @@ export default defineConfig({
     "anti-slop/no-array-filter-map": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-spread": "error",
+    "anti-slop/no-dev-env-branch": "error",
     "anti-slop/no-disabled-type-assertion-rules": "error",
     "anti-slop/no-known-value-widening": "error",
     "anti-slop/no-module-mocking": "error",
@@ -120,6 +125,14 @@ export default defineConfig({
     "landmines/no-unsignaled-poll": "error",
     "landmines/no-flake-masking": "error",
 
+    "ai-guard/no-placeholder-implementation": "error",
+    "ai-guard/no-test-env-branch": "error",
+    "ai-guard/no-tautological-assertion": "error",
+    "ai-guard/no-assertionless-test": "error",
+    "ai-guard/no-undeclared-import": "error",
+    "ai-guard/no-silent-fallback": "error",
+    "ai-guard/no-invisible-unicode": "error",
+
     "anti-slop-effect/no-manual-effect-error-tag": "error",
     "anti-slop-effect/no-manual-tag-comparison": "error",
     "anti-slop-effect/no-manual-tagged-construction": "error",
@@ -136,6 +149,7 @@ export default defineConfig({
     "anti-slop-effect/require-cause-when-narrowing": "error",
     "anti-slop-effect/require-operation-span": "error",
     "anti-slop-effect/require-service-make-layer": "error",
+    "anti-slop-effect/stream-large-files": "error",
     "anti-slop-effect/throw-in-effect-gen": "error",
 
     "effect/noAliasTestLayer": "error",
@@ -157,6 +171,8 @@ export default defineConfig({
     "enfect/no-effect-ignore-then-as": "error",
     "enfect/avoid-expect-in-if": "error",
     "enfect/yield-in-for-loop": "error",
+    "enfect/prefer-duration-constructors": "error",
+    "enfect/avoid-mutable-state": "error",
 
     "anti-slop-xstate/no-direct-xstate-create-machine": "error",
     "anti-slop-xstate/no-direct-xstate-use-selector": "error",
@@ -184,7 +200,7 @@ export default defineConfig({
 });
 ```
 
-Every rule checks the whole file. `["error", { mode: "changed" }]` checks only lines changed on the branch (against the merge base with the default branch), which ignores old violations and checks new code. Nothing defaults to `"changed"`, Jev rules included. anti-slop's own rules and the Jev rules accept `mode` directly; the `plugins/` wrappers add it to the landmines, cevr `effect`, and `enfect` rules. Built-in Oxlint rules and `effecttsgo/*` cannot take a mode and always check every line. [docs/modes.md](docs/modes.md) covers modes, the pre-commit and pre-push hooks, and CI.
+Every rule checks the whole file. `["error", { mode: "changed" }]` checks only lines changed on the branch (against the merge base with the default branch), which ignores old violations and checks new code. Nothing defaults to `"changed"`, Jev rules included. anti-slop's own rules and the Jev rules accept `mode` directly; the `plugins/` wrappers add it to the landmines, ai-guard, cevr `effect`, and `enfect` rules. Built-in Oxlint rules and `effecttsgo/*` cannot take a mode and always check every line. [docs/modes.md](docs/modes.md) covers modes, the pre-commit and pre-push hooks, and CI.
 
 Effect repositories should also run every `@effect/tsgo` diagnostic as an error. Those diagnostics are type-aware and run on the Effect-patched tsrs through `effect-tsgo --tsrs-lint oxlint`, which this repository's `lint` script uses with `--type-check` so the same tsrs pass also typechecks, with no `tsc`; tsrs mode is experimental, and the skill falls back to `oxlint-tsgolint` when it fails. The skill sets this up, and [`oxlint.config.ts`](oxlint.config.ts) in this repository shows the configuration.
 
@@ -333,6 +349,7 @@ Both Jev and the diff rules use the first credential they find.
 | [`no-array-filter-map`](src/rules/no-array-filter-map.ts) | Disallow adjacent array filter/map passes in favor of lazy iterator helpers or a single transformation. |
 | [`no-chained-type-assertions`](src/rules/no-chained-type-assertions.ts) | Disallow chained TypeScript as and angle-bracket assertions, including parenthesized chains. |
 | [`no-conditional-spread`](src/rules/no-conditional-spread.ts) | Disallow spreading ternary and logical expressions. Build the value explicitly instead. |
+| [`no-dev-env-branch`](src/rules/no-dev-env-branch.ts) | Disallow production code that returns fake data (mock-named values, literal objects and arrays) or a success result, or skips a check, when it detects development mode (`process.env.NODE_ENV === "development"`, `!== "production"`, `import.meta.env.DEV`, `__DEV__`). Development-only tooling, logging, and configuration are allowed. Ported from ai-guard's `no-test-env-branch` (MIT). |
 | [`no-disabled-type-assertion-rules`](src/rules/no-disabled-type-assertion-rules.ts) | Disallow inline disable comments for the type-assertion rules, and disable comments that name no rule. |
 | [`no-known-value-widening`](src/rules/no-known-value-widening.ts) | Disallow syntactically established values from flowing into explicitly broad or anonymous target types that discard useful evidence. |
 | [`no-module-mocking`](src/rules/no-module-mocking.ts) | Disallow Vitest and Jest module mocking; tests must replace dependencies through real interfaces. |
@@ -362,6 +379,20 @@ These four rules come from [interfere-inc/landmines](https://github.com/interfer
 | `no-unsignaled-poll` | `expect.poll` and `vi.waitFor` on request recorders and spy state, which race a deadline instead of awaiting an event. |
 | `no-flake-masking` | Test retries and raised timeouts. A test that passes on rerun is a flake to fix. |
 
+### AI shortcuts (`ai-guard`, error)
+
+These seven rules come from [ai-guard-dev/eslint-plugin-ai-guard](https://github.com/ai-guard-dev/eslint-plugin-ai-guard) under the MIT license. anti-slop does not vendor them: install `eslint-plugin-ai-guard` from npm and register it, or the `plugins/ai-guard.ts` wrapper that adds a `mode` option, as the `ai-guard` plugin. It is an ESLint plugin that runs unchanged in Oxlint. Use only these seven, not its presets: most of its other rules duplicate anti-slop, Oxlint, or `@effect/tsgo` checks.
+
+| Rule | What it checks |
+| --- | --- |
+| `no-placeholder-implementation` | Elision comments such as `// ... existing code ...`, stub bodies next to a `TODO`, `throw new Error("Not implemented")` bodies, and mock-named data returned from production code. |
+| `no-test-env-branch` | Production code that returns a hard-coded result when it detects a test runner (`if (process.env.NODE_ENV === "test") return { ok: true }`). |
+| `no-tautological-assertion` | Assertions that pass whatever the code does: `expect(true).toBe(true)`, `expect(x).toEqual(x)`, `assert.equal(2, 2)`. |
+| `no-assertionless-test` | Tests with no assertion, which pass whatever the code does. |
+| `no-undeclared-import` | Imports of packages that no `package.json` up to the repository root declares, which may not exist (slopsquatting) or only arrive transitively. |
+| `no-silent-fallback` | Hard-coded fallbacks for secret environment variables, and `catch` blocks that turn a failed awaited call into empty data. |
+| `no-invisible-unicode` | Bidirectional controls, zero-width characters, Unicode tag characters, and variation-selector runs in source. |
+
 ### Effect runtime (`effect`, error)
 
 These ten rules come from [cevr/effect-oxlint](https://github.com/cevr/effect-oxlint) by cevr, under the MIT license. anti-slop does not vendor them: in repositories whose direct `effect` dependency is 4.1 or later, install `oxlint-plugin-effect` from npm and register its `plugin` entry point as the `effect` plugin. The package imports `effect` at runtime, so Effect 3 and 4.0 repositories skip it. Use only these ten, not the package's recommended preset, which also enables rules that duplicate anti-slop, landmines, or `@effect/tsgo` checks, bans ordinary language features such as `null`, ternaries, `async`, and `throw`, and bans the SAFETY comments that `require-safety-comment-for-type-assertion` requires. `noUnboundedRetry` stays off because version 0.32.4 reports retries bounded with `Schedule.upTo` or a later `Effect.timeout`; use `anti-slop-effect/no-unbounded-retry`, a corrected port, instead.
@@ -381,7 +412,7 @@ These ten rules come from [cevr/effect-oxlint](https://github.com/cevr/effect-ox
 
 ### Effect conventions (`enfect`, error)
 
-These eight rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) by Marc Suesser, under the MIT license. anti-slop does not vendor them: in Effect repositories, install `@enfect/oxlint` from npm and register it as the `enfect` plugin, a name that cannot collide with cevr's `effect` plugin. The package brings its own `effect`, so it works with any Effect version. Its other rules duplicate anti-slop, `@effect/tsgo`, or cevr checks, or ban ordinary language features. `throw-in-effect-gen` stays off because version 0.10.0 reports throws in helpers, promise callbacks, and object methods that are only declared inside the generator, and misses `Effect.fn("name")(function* ...)`; use `anti-slop-effect/throw-in-effect-gen`, a corrected port, instead.
+These ten rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfect/tree/main/plugins/oxlint) by Marc Suesser, under the MIT license. anti-slop does not vendor them: in Effect repositories, install `@enfect/oxlint` from npm and register it as the `enfect` plugin, a name that cannot collide with cevr's `effect` plugin. The package brings its own `effect`, so it works with any Effect version. Its other rules duplicate anti-slop, `@effect/tsgo`, or cevr checks, or ban ordinary language features. `throw-in-effect-gen` stays off because version 0.10.0 reports throws in helpers, promise callbacks, and object methods that are only declared inside the generator, and misses `Effect.fn("name")(function* ...)`; use `anti-slop-effect/throw-in-effect-gen`, a corrected port, instead.
 
 | Rule | What it checks |
 | --- | --- |
@@ -393,6 +424,8 @@ These eight rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfe
 | `no-effect-ignore-then-as` | `Effect.ignore` immediately before `Effect.as`, which only hides the failure. |
 | `avoid-expect-in-if` | `expect` inside an `if`, which passes when the branch is skipped. |
 | `yield-in-for-loop` | `yield*` inside a `for` loop instead of `Effect.forEach` with an explicit concurrency. |
+| `prefer-duration-constructors` | A raw number of milliseconds passed to `Effect.sleep`, `Effect.delay`, `Effect.timeout*`, `Schedule.spaced`, `Schedule.fixed`, `Schedule.windowed`, or `Schedule.duration`, or as a `duration` option, instead of a `Duration` constructor. |
+| `avoid-mutable-state` | `let` bindings inside `Layer.effect`, `Layer.succeed`, or a `Context.Service` `make`, which hide fiber-visible state. Use `Ref`, `SynchronizedRef`, or `Effect.cached`. |
 
 ### Effect (`anti-slop-effect`, error)
 
@@ -414,6 +447,7 @@ These eight rules come from [mpsuesser/enfect](https://github.com/mpsuesser/enfe
 | [`require-cause-when-narrowing`](src/effect/rules/require-cause-when-narrowing.ts) | Require Effect.mapError/catch/catchAll/catchCause/orElse handlers that construct a new error to keep the original error as `cause`. |
 | [`require-operation-span`](src/effect/rules/require-operation-span.ts) | Require each operation returned by a Context.Service make to be traced with Effect.fn("name") or Effect.withSpan. |
 | [`require-service-make-layer`](src/effect/rules/require-service-make-layer.ts) | Require Context.Service classes to define `make` and `static layer = Layer.effect(this, this.make)`, with variant layers derived from them. |
+| [`stream-large-files`](src/effect/rules/stream-large-files.ts) | `fs.readFile` or `fs.readFileString` on a path named like large data (`log`, `export`, `csv`, `jsonl`, ...), taken from a listing (`files[i]`, `entry.path`), or built with a computed file name, which loads the whole file into memory. Stream it with `fs.stream`. Ported from mpsuesser/enfect's `stream-large-files` pattern (MIT). |
 | [`throw-in-effect-gen`](src/effect/rules/throw-in-effect-gen.ts) | `throw` whose nearest enclosing function is the generator of `Effect.gen`, `Effect.fn`, or `Effect.fnUntraced`, which becomes a defect instead of a typed failure. Throws in nested helpers, callbacks, and `try` blocks with a `catch` are not reported. Off for test files. Ported from mpsuesser/enfect's `throw-in-effect-gen` (MIT). |
 
 ### XState (`anti-slop-xstate`, error)
@@ -459,10 +493,31 @@ git clone --recurse-submodules https://github.com/K-Mistele/anti-slop
 pnpm install
 pnpm build:jev   # builds the vendor/oxlint-plugin-jev submodule
 pnpm check       # oxlint with the tsrs typecheck, every RuleTester suite, and the skill-asset drift check
+pnpm integrity   # fails if this branch weakens a check compared with its merge base with main
 ```
+
+## Integrity
+
+`node tools/oxlint/anti-slop/integrity/run.ts` (`pnpm integrity` here) compares the working tree, untracked files included, with the merge base of `HEAD` and the default branch (`--base <ref>` or `ANTI_SLOP_BASE` picks another), and fails when the change weakens the checks instead of fixing the code. It is deterministic and uses no network. It runs two analyses:
+
+- `ai-guard integrity --enforce` from `eslint-plugin-ai-guard`: skipped, focused, or deleted tests, new eslint and TypeScript suppressions, downgraded ESLint, TypeScript, and coverage settings, weakened `package.json` scripts, removed CI steps, and Git hook bypasses. High-confidence findings fail; advisory findings only print. It needs `@typescript-eslint/parser` to read TypeScript.
+- anti-slop's checks for what ai-guard does not read: an `oxlint-disable` or `eslint-disable` comment added without a ` -- reason`, and changes to `.oxlintrc.json` or `oxlint.config.ts` that lower a rule's severity, turn a rule off (including in an override), remove a rule, add an `ignorePatterns` entry, or remove a `jsPlugins` entry. Config files are read as text, never executed, so entries computed at runtime are not compared.
+
+```text
+anti-slop integrity: compared with origin/main (3944fc34ea79)
+  3 finding(s):
+  src/session.ts:41  suppression-without-reason
+      Added `// oxlint-disable-next-line anti-slop/no-object-parameters` without a reason. Fix the finding, or say why the rule does not apply after ` -- `.
+  oxlint.config.ts:52  rule-weakened
+      Turned off `landmines/no-fixed-sleep` (was error).
+  oxlint.config.ts:9  ignore-pattern-added
+      Added ignore pattern `src/legacy/**`; oxlint no longer checks matching files.
+```
+
+It exits 0 when nothing is weakened, 1 when something is, and 2 when the comparison cannot run. Run it in the pre-push hook and CI ([docs/modes.md](docs/modes.md)).
 
 `src/` is the canonical source. After you change it or move the submodule pin, run `pnpm sync:skill-assets` so the copies bundled in `skills/install-anti-slop/assets/` stay identical.
 
 ## License
 
-MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license. The `landmines` testing rules are the MIT-licensed [`@interfere/landmines`](https://github.com/interfere-inc/landmines) npm package, the `effect` runtime rules are the MIT-licensed [`oxlint-plugin-effect`](https://github.com/cevr/effect-oxlint) npm package, and the `enfect` rules are the MIT-licensed [`@enfect/oxlint`](https://github.com/mpsuesser/enfect) npm package; all three are used as dependencies. [`src/effect/rules/no-unbounded-retry.ts`](src/effect/rules/no-unbounded-retry.ts) is ported from cevr/effect-oxlint's `noUnboundedRetry` under its MIT license, and [`src/effect/rules/throw-in-effect-gen.ts`](src/effect/rules/throw-in-effect-gen.ts) from mpsuesser/enfect's `throw-in-effect-gen` under its MIT license.
+MIT. `src/vendor/eslint-stylistic/` is vendored from [ESLint Stylistic](src/vendor/eslint-stylistic/UPSTREAM.md) under its MIT license. The `landmines` testing rules are the MIT-licensed [`@interfere/landmines`](https://github.com/interfere-inc/landmines) npm package, the `effect` runtime rules are the MIT-licensed [`oxlint-plugin-effect`](https://github.com/cevr/effect-oxlint) npm package, the `enfect` rules are the MIT-licensed [`@enfect/oxlint`](https://github.com/mpsuesser/enfect) npm package, and the `ai-guard` rules and `ai-guard integrity` are the MIT-licensed [`eslint-plugin-ai-guard`](https://github.com/ai-guard-dev/eslint-plugin-ai-guard) npm package; all four are used as dependencies. [`src/effect/rules/no-unbounded-retry.ts`](src/effect/rules/no-unbounded-retry.ts) is ported from cevr/effect-oxlint's `noUnboundedRetry` under its MIT license, [`src/effect/rules/throw-in-effect-gen.ts`](src/effect/rules/throw-in-effect-gen.ts) from mpsuesser/enfect's `throw-in-effect-gen` and [`src/effect/rules/stream-large-files.ts`](src/effect/rules/stream-large-files.ts) from enfect's `stream-large-files` pattern under its MIT license, and [`src/rules/no-dev-env-branch.ts`](src/rules/no-dev-env-branch.ts) from eslint-plugin-ai-guard's `no-test-env-branch` under its MIT license.
