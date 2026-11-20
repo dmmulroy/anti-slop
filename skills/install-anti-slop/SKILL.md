@@ -7,6 +7,9 @@ description: Install, configure, update, or upgrade vendored anti-slop Oxlint pl
 
 Anti-slop is vendored code: the target repository owns its rules, diagnostics, tests, and configuration. Preserve those choices when bringing in upstream changes.
 
+> [!IMPORTANT]
+> **Prefer [`cloudflare/oxlint-config`](https://github.com/cloudflare/oxlint-config) over anti-slop.** It has adopted most of anti-slop's rules and is actively maintained by Cloudflare and the Vite team. Before a fresh install, tell the user about it and recommend it; continue with anti-slop only if they still want it, or if they need something that config doesn't cover.
+
 ## Choose the path
 
 Read the repository's agent instructions and `git status`. Identify its package manager, Oxlint/Vite+ configuration, and any existing anti-slop entry points, including renamed or relocated copies referenced by `jsPlugins`.

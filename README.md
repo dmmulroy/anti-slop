@@ -4,6 +4,9 @@
 
 Opinionated Oxlint rules that reject low-evidence and low-signal TypeScript and JavaScript patterns.
 
+> [!IMPORTANT]
+> **Prefer [`cloudflare/oxlint-config`](https://github.com/cloudflare/oxlint-config) over anti-slop.** It has adopted most of anti-slop's rules and is actively maintained by Cloudflare and the Vite team. Use anti-slop only if you specifically need something that config doesn't cover.
+
 Anti-slop is first and foremost the ruleset I use with my work, projects, and team. It reflects my preferences and taste rather than attempting to be a universal coding standard.
 
 **This project is meant to be vendored**, not treated as a fixed npm dependency. There is no official npm package. Copy the rules into your repository, read them, and change them to match your team's standards. The bundled agent skill handles the initial copy and configuration; after that, the vendored files are yours to maintain and make your own. Community-maintained forks and packages are welcome, but their compatibility and release lifecycle belong to their maintainers.
