@@ -5,6 +5,7 @@ import {
 	isReasonTagMember,
 	isTagMember,
 	tagMemberFromComparison,
+	unwrapChain,
 } from "../shared/tagged-values.ts";
 
 export const noManualEffectErrorTagRule = defineRule({
@@ -36,15 +37,13 @@ export const noManualEffectErrorTagRule = defineRule({
 				});
 			},
 			SwitchStatement(node) {
-				if (
-					!isTagMember(node.discriminant) ||
-					!isInsideBroadEffectHandler(node)
-				) {
+				const discriminant = unwrapChain(node.discriminant);
+				if (!isTagMember(discriminant) || !isInsideBroadEffectHandler(node)) {
 					return;
 				}
 				context.report({
 					node,
-					messageId: isReasonTagMember(node.discriminant) ? "reason" : "tag",
+					messageId: isReasonTagMember(discriminant) ? "reason" : "tag",
 				});
 			},
 		};

@@ -19,12 +19,20 @@ export const isTagMember = (
 			isStringLiteral(node.property) &&
 			node.property.value === "_tag"));
 
+/** `value?._tag` parses as a ChainExpression around the member access. */
+export const unwrapChain = (
+	node: ESTree.Node | null | undefined,
+): ESTree.Node | null | undefined =>
+	node?.type === "ChainExpression" ? node.expression : node;
+
 export const tagMemberFromComparison = (
 	node: ESTree.BinaryExpression,
 ): ESTree.MemberExpression | undefined => {
 	if (!equalityOperators.has(node.operator)) return undefined;
-	if (isTagMember(node.left) && isStringLiteral(node.right)) return node.left;
-	if (isTagMember(node.right) && isStringLiteral(node.left)) return node.right;
+	const left = unwrapChain(node.left);
+	const right = unwrapChain(node.right);
+	if (isTagMember(left) && isStringLiteral(right)) return left;
+	if (isTagMember(right) && isStringLiteral(left)) return right;
 	return undefined;
 };
 
