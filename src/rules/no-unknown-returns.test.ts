@@ -20,6 +20,7 @@ tester.run("anti-slop/no-unknown-returns", noUnknownReturnsRule, {
     "function load(): Promise<User> { return promise; }",
     "type Identity<T> = T; function load(): Identity<User> { return user; }",
     "type Value = unknown; function outer() { type Value = User; function load(): Value { return user; } }",
+    "type T = User; type Body = T; type Outer<T> = Body; function load(): Outer<unknown> { return user; }",
   ],
   invalid: [
     { code: "function load(): unknown { return input; }", errors: [error] },

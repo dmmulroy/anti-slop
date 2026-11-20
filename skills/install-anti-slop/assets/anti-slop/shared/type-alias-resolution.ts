@@ -194,7 +194,7 @@ function aliasSubstitutions(
 ): Substitutions | null {
 	const parameters = alias.typeParameters?.params ?? [];
 	const arguments_ = reference.typeArguments?.params ?? [];
-	const next = new Map(base);
+	const next = new Map<string, Substitution>();
 	for (const [index, parameter] of parameters.entries()) {
 		const explicitArgument = arguments_[index];
 		const argument = explicitArgument ?? parameter.default;
