@@ -20,6 +20,11 @@ tester.run("anti-slop/no-unknown-returns", noUnknownReturnsRule, {
     "function load(): Promise<User> { return promise; }",
     "type Identity<T> = T; function load(): Identity<User> { return user; }",
     "type Value = unknown; function outer() { type Value = User; function load(): Value { return user; } }",
+    "export function wrap<THook extends (...args: never[]) => unknown>(hook: THook): THook { return hook; }",
+    "export type Wrapped<THook extends () => unknown = () => unknown> = { hook: THook };",
+    "type FnConstraint<T extends () => unknown> = T;",
+    "type FnDefault<T = () => unknown> = T;",
+    "interface Wrapper<T extends (...args: any[]) => unknown> { handler: T; }",
   ],
   invalid: [
     { code: "function load(): unknown { return input; }", errors: [error] },
@@ -41,6 +46,14 @@ tester.run("anti-slop/no-unknown-returns", noUnknownReturnsRule, {
     },
     {
       code: "type Identity<T> = T; type Wrapped<T> = Promise<Identity<T>>; function load(): Wrapped<unknown> { return promise; }",
+      errors: [error],
+    },
+    {
+      code: "export function wrap<THook extends (...args: never[]) => unknown>(hook: THook): unknown { return hook; }",
+      errors: [error],
+    },
+    {
+      code: "type MyFn = <T extends () => unknown>() => unknown;",
       errors: [error],
     },
   ],
