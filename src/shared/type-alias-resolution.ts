@@ -11,7 +11,14 @@ type TypeBinding = {
 	readonly scope: TypeScope;
 };
 
+type ResolvingAliases = ReadonlySet<ESTree.TSTypeAliasDeclaration>;
+
+/**
+ * A type argument bound to a type parameter, with the substitutions and alias expansions
+ * that were active where the argument was written.
+ */
 type Substitution = {
+	readonly resolvingAliases: ResolvingAliases;
 	readonly substitutions: Substitutions;
 	readonly type: ESTree.TSType;
 };
@@ -191,6 +198,8 @@ function aliasSubstitutions(
 	alias: ESTree.TSTypeAliasDeclaration,
 	reference: ESTree.TSTypeReference,
 	base: Substitutions,
+	baseResolving: ResolvingAliases,
+	aliasResolving: ResolvingAliases,
 ): Substitutions | null {
 	const parameters = alias.typeParameters?.params ?? [];
 	const arguments_ = reference.typeArguments?.params ?? [];
@@ -199,10 +208,12 @@ function aliasSubstitutions(
 		const explicitArgument = arguments_[index];
 		const argument = explicitArgument ?? parameter.default;
 		if (argument === null || argument === undefined) return null;
-		const argumentSubstitutions = explicitArgument === undefined ? next : base;
+		// Explicit arguments were written at the reference; defaults inside the alias.
+		const isDefault = explicitArgument === undefined;
 		next.set(parameter.name.name, {
 			type: argument,
-			substitutions: new Map(argumentSubstitutions),
+			substitutions: new Map(isDefault ? next : base),
+			resolvingAliases: isDefault ? aliasResolving : baseResolving,
 		});
 	}
 	return next;
@@ -217,25 +228,34 @@ export function resolvedTypeMatches(
 	const evaluate = (
 		current: ESTree.TSType,
 		substitutions: Substitutions,
-		resolvingAliases: ReadonlySet<ESTree.TSTypeAliasDeclaration>,
+		resolvingAliases: ResolvingAliases,
 	): boolean => {
 		if (current.type === "TSTypeReference") {
 			const name = typeReferenceName(current);
 			if (name !== null) {
 				const substitution = substitutions.get(name);
 				if (substitution !== undefined && !current.typeArguments?.params.length) {
+					// Resume in the argument's own context so a separate, finite instantiation of an
+					// alias that is still being expanded (`Maybe<Maybe<unknown>>`) is not mistaken for
+					// recursion.
 					return evaluate(
 						substitution.type,
 						substitution.substitutions,
-						resolvingAliases,
+						substitution.resolvingAliases,
 					);
 				}
 				const alias = visibleTypeAlias(name, current, environment);
 				if (alias !== null && !resolvingAliases.has(alias)) {
-					const nextSubstitutions = aliasSubstitutions(alias, current, substitutions);
+					const nextResolving = new Set(resolvingAliases);
+					nextResolving.add(alias);
+					const nextSubstitutions = aliasSubstitutions(
+						alias,
+						current,
+						substitutions,
+						resolvingAliases,
+						nextResolving,
+					);
 					if (nextSubstitutions !== null) {
-						const nextResolving = new Set(resolvingAliases);
-						nextResolving.add(alias);
 						return evaluate(alias.typeAnnotation, nextSubstitutions, nextResolving);
 					}
 				}
