@@ -15,9 +15,9 @@ export const noManualTagComparisonRule = defineRule({
 		},
 		messages: {
 			manualComparison:
-				"Use Match.tag/Match.tags for tagged-value branching, or Predicate.isTagged for a simple reusable predicate.",
+				"Use Match.tag/Match.tags for tagged-value branching, Predicate.isTagged for a simple reusable predicate, or the `guards.<Tag>` / `match` helpers of a Schema.TaggedUnion.",
 			manualSwitch:
-				"Use Match.value(value).pipe(Match.tag/Match.tags/Match.tagsExhaustive) or the tagged enum `$match` helper instead of switching on `_tag`.",
+				"Use Match.value(value).pipe(Match.tag/Match.tags/Match.tagsExhaustive), the tagged enum `$match` helper, or Schema.TaggedUnion `match` instead of switching on `_tag`.",
 		},
 	},
 	createOnce(context) {

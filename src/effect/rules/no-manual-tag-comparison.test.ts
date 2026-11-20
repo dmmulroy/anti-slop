@@ -7,6 +7,8 @@ new RuleTester().run("no-manual-tag-comparison", noManualTagComparisonRule, {
 		"Predicate.isTagged(\"Ready\")(value);",
 		"Match.value(value).pipe(Match.tag(\"Ready\", handleReady));",
 		'if (value.status === "Ready") handleReady(value);',
+		"State.guards.Ready(value) ? handleReady(value) : skip;",
+		"State.match(value, { Ready: handleReady, Pending: skip });",
 		'Effect.catch((error) => error._tag === "NotFound" ? recover : fail);',
 	],
 	invalid: [

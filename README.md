@@ -133,8 +133,8 @@ export default defineConfig({
 ### Effect rules
 
 - `no-manual-effect-error-tag` — rejects manual `_tag` comparisons and switches inside broad `Effect.catch`, `Effect.catchAll`, and `Effect.catchIf` handlers in favor of tagged error handlers.
-- `no-manual-tag-comparison` — rejects direct `_tag` comparisons and `_tag` switches in favor of `Match`, `Predicate.isTagged`, or tagged-enum matching.
-- `no-manual-tagged-construction` — rejects literal `_tag` object construction in favor of Schema, tagged class/error, or `Data.taggedEnum` constructors. `Match.when` and `Match.not` patterns remain allowed.
+- `no-manual-tag-comparison` — rejects direct `_tag` comparisons and `_tag` switches in favor of `Match`, `Predicate.isTagged`, tagged-enum matching, or the `guards` / `match` helpers of a `Schema.TaggedUnion`.
+- `no-manual-tagged-construction` — rejects literal `_tag` object construction in favor of Schema (including `Schema.TaggedUnion` `cases.<Tag>.make`), tagged class/error, or `Data.taggedEnum` constructors. `Match.when` and `Match.not` patterns remain allowed.
 - `no-service-constructor-imports` — rejects named `make<CapabilityName>` imports from relative project modules outside `*.test.*` and `*.spec.*` files. Runtime callers should import the owning Layer and yield the contextual service instead. Package and path-alias imports, default imports, and static constructors such as `WorkspaceName.make` are outside the rule.
 - `prefer-effect-match` — rejects chained literal ternaries over the same value in favor of Effect's `Match` API.
 
@@ -309,13 +309,19 @@ Use `Predicate.isTagged` for a predicate or `Match` for branching:
 if (Predicate.isTagged("Ready")(result)) useReady(result);
 ```
 
+When the value comes from a `Schema.TaggedUnion`, its own helpers do the same job:
+
+```ts
+if (State.guards.Ready(result)) useReady(result);
+```
+
 Literal tag objects are rejected by `no-manual-tagged-construction`:
 
 ```ts
 const result = { _tag: "Ready", value };
 ```
 
-Use the existing Schema, tagged class/error, or `Data.taggedEnum` constructor instead, such as `Ready.make({ value })`. Object patterns passed directly to `Match.when` and `Match.not` remain allowed.
+Use the existing Schema, tagged class/error, or `Data.taggedEnum` constructor instead, such as `Ready.make({ value })`. For a state union, define it with `Schema.TaggedUnion` and build members with `State.cases.Ready.make({ value })`. Object patterns passed directly to `Match.when` and `Match.not` remain allowed.
 
 Manual tag branching in broad catch handlers is rejected by `no-manual-effect-error-tag`:
 
