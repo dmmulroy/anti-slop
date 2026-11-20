@@ -42,6 +42,11 @@ const isBroadEffectCatchCall = (
 export const isInsideBroadEffectHandler = (node: ESTree.Node): boolean => {
 	let current: ESTree.Node | null | undefined = node.parent;
 	while (current !== null && current !== undefined) {
+		if (current.type === "FunctionDeclaration") {
+			// A declaration is never the handler argument itself, so the search
+			// stops here and the handler cannot own this comparison.
+			return false;
+		}
 		if (
 			current.type === "ArrowFunctionExpression" ||
 			current.type === "FunctionExpression"
