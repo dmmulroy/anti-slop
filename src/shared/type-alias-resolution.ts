@@ -41,6 +41,8 @@ function isNode(value: unknown): value is ESTree.Node {
 }
 
 function enclosingTypeScope(node: ESTree.Node): TypeScope {
+	// A named class expression binds its name only inside the expression.
+	if (node.type === "ClassExpression") return node;
 	let current: ESTree.Node | null = node.parent;
 	while (current !== null) {
 		if (
