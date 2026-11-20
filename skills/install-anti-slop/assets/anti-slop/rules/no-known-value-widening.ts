@@ -14,6 +14,7 @@ import {
 	functionParameterTypeAnnotation,
 } from "../shared/function-parameters.ts";
 import { resolveVariable } from "../shared/scope.ts";
+import { visibleTypeAlias } from "../shared/type-alias-resolution.ts";
 
 import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 
@@ -135,6 +136,31 @@ function hasInformativeType(
 	return classifyUnsafeDictionaryValue(type, environment) === null;
 }
 
+function isUnionType(
+	type: ESTree.TSType,
+	environment: TypeEnvironment,
+	resolvingAliases = new Set<string>(),
+): boolean {
+	let current = type;
+	while (
+		current.type === "TSParenthesizedType" ||
+		(current.type === "TSTypeOperator" && current.operator === "readonly")
+	) {
+		current = current.typeAnnotation;
+	}
+	if (current.type === "TSUnionType") return true;
+	if (current.type === "TSTypeReference" && current.typeName.type === "Identifier") {
+		const name = current.typeName.name;
+		if (resolvingAliases.has(name)) return false;
+		const alias = visibleTypeAlias(name, current, environment.typeAliases);
+		if (alias !== null) {
+			resolvingAliases.add(name);
+			return isUnionType(alias.typeAnnotation, environment, resolvingAliases);
+		}
+	}
+	return false;
+}
+
 function hasKnownCallArgumentEvidence(
 	sourceCode: SourceCode,
 	expression: ESTree.Expression,
@@ -150,6 +176,7 @@ function hasKnownCallArgumentEvidence(
 		);
 	}
 	if (expression.type === "TSAsExpression" || expression.type === "TSTypeAssertion") {
+		if (isUnionType(expression.typeAnnotation, environment)) return false;
 		return hasInformativeType(expression.typeAnnotation, environment);
 	}
 	if (expression.type === "TSSatisfiesExpression") {
@@ -163,6 +190,7 @@ function hasKnownCallArgumentEvidence(
 	if (expression.type === "CallExpression") {
 		const owner = localFunctionForCall(sourceCode, expression.callee);
 		const returnType = owner?.returnType?.typeAnnotation;
+		if (returnType !== undefined && isUnionType(returnType, environment)) return false;
 		return returnType !== undefined && hasInformativeType(returnType, environment);
 	}
 	if (expression.type !== "Identifier") return isKnownEvidenceExpression(expression);
@@ -170,6 +198,7 @@ function hasKnownCallArgumentEvidence(
 	if (variable === null || visitedVariables.has(variable)) return false;
 	const annotation = variableTypeAnnotation(sourceCode, variable);
 	if (annotation !== null) {
+		if (isUnionType(annotation.typeAnnotation, environment)) return false;
 		return hasInformativeType(annotation.typeAnnotation, environment);
 	}
 	const declarator = variableDeclarator(variable);
