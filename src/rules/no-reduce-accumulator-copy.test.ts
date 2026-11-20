@@ -7,6 +7,10 @@ const error = { messageId: "accumulatorCopy" };
 
 tester.run("anti-slop/no-reduce-accumulator-copy", noReduceAccumulatorCopyRule, {
   valid: [
+    "const data = { initial: customCollection }; items.reduce((acc, item) => acc.concat(item), data.initial);",
+    "const data = { initial: [] }; data.initial = customCollection; items.reduce((acc, item) => acc.concat(item), data.initial);",
+    "function collect(data: { initial: IteratorObject<Item> }) { return items.reduce((acc, item) => acc.concat(item), data.initial); }",
+    "type Array<T> = CustomCollection<T>; function collect(data: { initial: Array<Item> }) { return items.reduce((acc, item) => acc.concat(item), data.initial); }",
     "items.reduce((acc, item) => { acc.push(item); return acc; }, []);",
     "items.reduce((acc, item) => Object.assign(acc, item), {});",
     "items.reduce((acc, item) => Object.assign(acc, acc, item), {});",
@@ -28,6 +32,8 @@ tester.run("anti-slop/no-reduce-accumulator-copy", noReduceAccumulatorCopyRule, 
     "items.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});",
   ],
   invalid: [
+    { code: "const data = { initial: [] }; items.reduce((acc, item) => acc.concat(item), data.initial);", errors: [error] },
+    { code: "function collect(data: { initial: readonly Item[] }) { return items.reduce((acc, item) => acc.slice(), data.initial); }", errors: [error] },
     { code: "items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});", errors: [error] },
     { code: "items.reduceRight((acc, item) => Object.assign({}, acc, item), {});", errors: [error] },
     { code: "items.reduce((acc, item, index, array) => Object.assign({}, acc, item), {});", errors: [error] },
