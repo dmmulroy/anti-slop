@@ -35,9 +35,19 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"function run<T extends Record<string, unknown>>(input: T): T { return input; }",
 		"declare class Store<T extends Record<string, unknown>> { read(): T }",
 		"type Deep<T extends Readonly<Record<string, unknown>>> = T;",
+		"type T = Command; type Body = Record<string, T>; type Outer<T> = Body; type A = Outer<unknown>;",
+		"type Box<T> = Record<string, T>; type ReadonlyBox<T> = Box<Readonly<T>>; type Safe = ReadonlyBox<{ id: string }>;",
 	],
 	invalid: [
 		{ code: "type A = Record<string, unknown>;", errors: [error] },
+		{
+			code: "type Inner<A extends PropertyKey, B> = Record<A, B>; type Outer<A, B extends PropertyKey> = Inner<B, A>; type Unsafe = Outer<unknown, string>;",
+			errors: [error],
+		},
+		{
+			code: "type Box<T> = Record<string, T>; type Wrap<T> = Box<T>; type Unsafe = Wrap<unknown>;",
+			errors: [error],
+		},
 		{ code: "type A = { [key: string]: any };", errors: [error] },
 		{ code: "type A = { [index: number]: Command; [key: string]: unknown | Command };", errors: 1 },
 		{ code: "type A = { [K in PropertyKey]: object };", errors: [error] },
