@@ -4,6 +4,24 @@ import createPaddingLineRule from "../vendor/eslint-stylistic/padding-line-betwe
 
 import type { NodeTestObject } from "../vendor/eslint-stylistic/padding-line-between-statements.ts";
 
+function declaration(node: ESTree.Node): ESTree.Node {
+  if ((node.type === "ExportNamedDeclaration" || node.type === "ExportDefaultDeclaration") && node.declaration) return node.declaration;
+
+  return node;
+}
+
+function skipAttachedStatementPair(previous: ESTree.Node, next: ESTree.Node): boolean {
+  if (next.type === "EmptyStatement" && previous.loc.end.line === next.loc.start.line) return true;
+
+  const prevDeclaration = declaration(previous);
+  const nextDeclaration = declaration(next);
+  return prevDeclaration.type === "TSDeclareFunction"
+    && (nextDeclaration.type === "TSDeclareFunction" || nextDeclaration.type === "FunctionDeclaration")
+    && prevDeclaration.id != null
+    && nextDeclaration.id != null
+    && prevDeclaration.id.name === nextDeclaration.id.name;
+}
+
 /** A `const`/`let`/`var`/`using` declaration, optionally exported, written on one line. */
 function isSinglelineBinding(node: ESTree.Node): boolean {
   const declaration = node.type === "ExportNamedDeclaration" ? node.declaration : node;
@@ -49,22 +67,12 @@ const paddingRule = createPaddingLineRule(
     // Consecutive single-line bindings form one group at any scope, including
     // module scope. A binding with its own leading comment starts a new group.
     { blankLine: "any", prev: "singleline-binding", next: "undocumented-singleline-binding" },
-    {
-      blankLine: "any",
-      prev: {
-        selector:
-          ':matches(TSDeclareFunction, ExportNamedDeclaration[declaration.type="TSDeclareFunction"])',
-      },
-      next: {
-        selector:
-          ':matches(TSDeclareFunction, FunctionDeclaration, ExportNamedDeclaration[declaration.type="TSDeclareFunction"], ExportNamedDeclaration[declaration.type="FunctionDeclaration"])',
-      },
-    },
   ],
   {
     "singleline-binding": singlelineBinding,
     "undocumented-singleline-binding": undocumentedSinglelineBinding,
   },
+  skipAttachedStatementPair,
 );
 
 /** Restore structural blank lines with whitespace-only fixes; keep single-line binding groups and overloads grouped. */
