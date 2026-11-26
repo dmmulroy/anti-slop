@@ -5,6 +5,7 @@ import { resolveVariable } from "../shared/scope.ts";
 import type { ESTree, SourceCode } from "@oxlint/plugins";
 
 const moduleMockMethods = new Set(["doMock", "mock", "unstable_mockModule"]);
+const vitestSources = new Set(["vitest", "vite-plus/test"]);
 
 function importedName(node: ESTree.Node): string | null {
   if (node.type !== "ImportSpecifier") return null;
@@ -33,7 +34,7 @@ function isTestFrameworkObject(
     }
     const source = definition.parent.source.value;
     const name = importedName(definition.node);
-    return (source === "vitest" && name === "vi") || (source === "@jest/globals" && name === "jest");
+    return (vitestSources.has(source) && name === "vi") || (source === "@jest/globals" && name === "jest");
   });
 }
 
