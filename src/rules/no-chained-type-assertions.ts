@@ -1,18 +1,12 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
 
+import { unwrapParenthesizedExpression } from "../shared/ast.ts";
+
 type TypeAssertionExpression = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
 
 function isTypeAssertionExpression(node: ESTree.Node): node is TypeAssertionExpression {
   return node.type === "TSAsExpression" || node.type === "TSTypeAssertion";
-}
-
-function unwrapParenthesizedExpression(expression: ESTree.Expression): ESTree.Expression {
-  let current = expression;
-  while (current.type === "ParenthesizedExpression") {
-    current = current.expression;
-  }
-  return current;
 }
 
 function isConstAssertion(node: TypeAssertionExpression): boolean {

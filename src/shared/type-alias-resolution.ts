@@ -1,5 +1,6 @@
 import type { ESTree } from "@oxlint/plugins";
 
+import { isNode } from "./ast.ts";
 import { lexicalTypeParameterNames } from "./lexical-type-parameters.ts";
 
 type VisitorKeys = Readonly<Record<string, readonly string[]>>;
@@ -30,15 +31,6 @@ export type ResolvedTypeMatcher = (
 ) => boolean;
 
 const environmentsByProgram = new WeakMap<ESTree.Program, TypeAliasEnvironment>();
-
-function isNode(value: unknown): value is ESTree.Node {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		"type" in value &&
-		typeof value.type === "string"
-	);
-}
 
 function enclosingTypeScope(node: ESTree.Node): TypeScope {
 	let current: ESTree.Node | null = node.parent;
